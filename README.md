@@ -1,161 +1,109 @@
 # FitFindr
 
-> ### 👋 Start here
->
-> **New to this repo? Read [RUNNING.md](RUNNING.md) first** — setup, every
-> command, and what to do when something breaks.
->
-> Once `python test.py` passes:
->
-> ```bash
-> python app.py listings --full -n 6      # read the data (Milestone 1)
-> python app.py fields                    # what you can filter on
-> python app.py ask 'vintage graphic tee under $30'
-> ```
->
-> All three tools are stubs, so that last command will do nothing useful yet.
-> That's the starting position.
->
-> **The rest of this file is your submission.** Fill it in as you go.
-
----
-
-<!-- ─────────────────────────────────────────────────────────────────────────
-     HOW TO USE THIS FILE
-
-     This is your submission. Fill each section in as you finish the milestone
-     it belongs to — don't leave it all to the end.
-
-     Unit 3 asks for the first five sections. Unit 4 adds the five below them.
-     Leave the unit 4 sections alone until then; they're here so you know
-     what's coming.
-
-     Everything is pasted as TEXT. No screenshots, no images, no video links.
-     A typed block of output gets full credit; a picture of the same output
-     gets none.
-     ───────────────────────────────────────────────────────────────────────── -->
-
-<!-- ═══════════════════════ UNIT 3 — THE BUILD ═══════════════════════ -->
-
 ## What This Does
 
-<!-- Three or four sentences: what a user asks for, and what they get back. -->
+FitFindr takes a request like “a vintage graphic tee under $30, size M” and
+searches the 40 sample listings included in the starter. It picks a matching
+item, uses the example wardrobe to suggest an outfit, and writes a short caption
+with the item's price and platform. If nothing matches, it stops and tells me
+what to change. It runs from the terminal; these are bundled listings, so it
+does not check live availability or buy anything.
 
+Use Python 3.11–3.13. On Windows PowerShell:
 
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+# Add your GEMINI_API_KEY to .env locally.
+python test.py
+python app.py ask 'vintage graphic tee under $30, size M'
+```
 
----
+Keep the single quotes around queries containing dollar amounts. The full
+starter command reference is [RUNNING.md](RUNNING.md). Keep this repository for
+next unit: the criteria and commit history need to stay together.
 
 ## Tool Inventory
 
-<!-- Four lines per tool. This is worth 2 points and it's the single most
-     common place students lose them.
-
-     "Returns a list" earns NOTHING. The description has to say what is IN
-     the list.
-
-     The empty case isn't optional either — it's the thing your loop branches
-     on, and if you don't decide it here you'll discover it as a crash in
-     Milestone 5. -->
-
 ### `search_listings`
 
-- **What it does:**
-- **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Loads the bundled listings with `load_listings()` and filters by description, size, and maximum price.
+- **Inputs:** `description` (`str`), `size` (`str | None`, default `None`), `max_price` (`float | None`, default `None`).
+- **Returns:** Up to `config.SEARCH_RESULT_LIMIT` complete listing dictionaries, each with `id`, `title`, `description`, `category`, `style_tags` (`list[str]`), `size`, `condition`, `price` (`float`), `colors` (`list[str]`), `brand` (`str | None`), and `platform`. Better title/tag matches come first, with lower price and then ID breaking ties.
+- **When it has nothing:** Returns `[]` for no match or a description with no searchable words. Invalid negative/nonfinite price ceilings raise `ValueError`.
+
+Every meaningful description word must occur in the listing's title,
+description, category, tags, colors, or brand, ignoring case and punctuation.
+Common request words such as “looking for” are removed. At least one word must
+occur outside the description so a passing mention alone does not qualify.
+Title, tags, and the other structured text fields count more toward ranking
+than description text. This is keyword matching, not a synonym search.
+
+The ceiling is inclusive and applies to the listed price only. M matches M,
+S/M, and M/L; L does not match XL. Shoe size 8 matches US 8, not US 8.5. W30
+matches W30 or W30 L30; requesting W30 L30 requires both parts. One Size matches
+only an explicit One Size request. Sizes are label matches, not a fit guarantee.
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Calls the starter's `generate()` adapter for one or two outfit ideas using the selected listing and supplied wardrobe.
+- **Inputs:** `new_item` (`dict`, one complete listing), `wardrobe` (`dict` with `items: list[dict]`; each wardrobe item has `id`, `name`, `category`, `colors`, `style_tags`, and optional `notes`).
+- **Returns:** A nonempty `str` naming the selected item and specific wardrobe pieces, with a brief explanation of how they go together.
+- **When it has nothing:** With `{"items": []}`, asks the model for general styling advice and labels suggested pieces as ideas, not things the user owns. With no selected item, returns `Choose a listing before asking for an outfit.` A blank model response raises `ModelUnavailable` rather than pretending it is an outfit.
 
 ### `create_fit_card`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Calls `generate()` to turn the outfit and selected listing into a casual caption.
+- **Inputs:** `outfit` (`str`), `new_item` (`dict`, the same complete listing).
+- **Returns:** A nonempty `str`; the prompt requests 2–4 sentences, at most 70 words, the item, its exact listed price and platform once each, and an outfit detail. This is a quality target to test, not a guaranteed sentence count.
+- **When it has nothing:** For blank outfit text, returns `No outfit to caption. Generate an outfit suggestion first.` For no item, returns `Choose a listing before creating a fit card.` Neither case calls the model. A blank model response raises `ModelUnavailable`.
 
----
+Both model tools use the starter's cache and rate-limit pacing. Provider failure
+is an exception at the tool boundary and a readable error at the agent boundary.
+No hardcoded successful model responses are used in the application.
 
 ## Planning Loop
 
-<!-- Your branch rule, stated as a rule — the condition AND both paths — plus
-     the file and function that holds it.
+**Branch rule:** If `search_listings` returns an empty list, save a message
+suggesting broader keywords, another size, or a higher budget and stop. Otherwise,
+select the first result and call `suggest_outfit`, then use that returned outfit
+and the same item to call `create_fit_card`.
 
-     Like this:
-       "If search_listings returns an empty list, put a message in the session
-        and stop. Otherwise take the first result and go to suggest_outfit."
-        — agent.py::run_agent
+**Where it lives:** `agent.py::run_agent`, with a `while` loop and a separate
+search, outfit, and card step. Each iteration checks `trace.check_iterations`.
 
-     The grader checks your code against what you claim here, so the file and
-     function have to be real. -->
+**How the query is parsed:** Regular expressions extract `size M`, `in size M`,
+`size US 8`, `size W30 L30`, or `size One Size`, and a ceiling such as `under $30`,
+`below 30`, `up to $30`, or `max price 30`. A bare `$30` is also a ceiling.
+Those spans are removed before keyword matching. The parser does not ask the
+model and does not ask the user to repeat the item.
 
-**Branch rule:**
+**What moves through the session:** `query` becomes `parsed`; search output goes
+into `search_results`; the first entry becomes `selected_item`. The outfit tool
+reads `selected_item` and `wardrobe` from the session, and its output becomes
+`outfit_suggestion`. The caption tool reads that value and `selected_item` back
+from the session, then saves `fit_card`. `tool_calls` records the tool names and
+actual input snapshots so item identity can be checked. `error` explains an
+early stop, while unfinished result fields remain `None`.
 
-**Where it lives:** `agent.py::run_agent`
-
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
-
-**What moves through the session:** <!-- which fields, in what order -->
-
----
+**Stretch declared before implementation:** A second branch stops before the
+caption when outfit generation is empty or the model is unavailable. It keeps
+the search result in the session and gives a retry message. I am not adding a
+fourth tool or persistent style memory this unit.
 
 ## Sample Run
 
-<!-- Two things go here.
-
-     1. One FULL query and its output, pasted as text.
-     2. Your three per-tool terminal tests — the command and what it printed. -->
-
-**One full query**
-
-```
-$ python app.py ask '...'
-
-```
-
-**The three tools, tested one at a time**
-
-```
-$ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
-
-```
-
-```
-$ python -c "from tools import suggest_outfit; ..."
-
-```
-
-```
-$ python -c "from tools import create_fit_card; ..."
-
-```
-
----
+Implementation and real terminal outputs will be added after the tool checks.
+The starter baseline and data notes are in [docs/build-notes.md](docs/build-notes.md).
 
 ## How I Used AI
 
-<!-- Two specific moments. What you asked, what came back, what you changed.
-
-     "I used Claude to help me code" is not enough.
-
-     "I gave Claude my search_listings spec. It returned None on no match
-     instead of an empty list, so I changed it" is the level we want. -->
-
-**Moment 1**
-
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
-
-**Moment 2**
-
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+I used Codex for implementation, tests, and documentation as well as review.
+I also asked it to choose reasonable targets for the three original criteria;
+those targets were drafted with AI assistance. The completed build will include
+two concrete examples of what that assistance changed.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
