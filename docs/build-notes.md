@@ -6,7 +6,7 @@
 2. Completed: specify the three tools and the planning rule.
 3. Completed: commit five acceptance criteria before implementing the tools.
 4. Completed: build and check each tool, then connect the loop and session.
-5. **In progress:** record real runs, review the changes, and push the submission fork.
+5. Completed: record real runs, review the changes, and push the submission fork.
 
 ## Data notes
 
@@ -73,3 +73,6 @@ are ignored by Git.
 Submission repository: https://github.com/ron2k1/RonilBasu-ai201-project2
 Keep this same fork for the next unit. Pasting its URL into the Course Portal
 is the remaining submission step for the account owner.
+
+The completed `fitfindr-build` branch is pushed and is the GitHub default
+branch, so the repository URL opens the submission files.
