@@ -4,8 +4,8 @@
 
 1. Completed: inspect the starter, read the data, and prepare Python 3.12.
 2. Completed: specify the three tools and the planning rule.
-3. **In progress:** commit five acceptance criteria before implementing the tools.
-4. Build and check each tool, then connect the loop and session.
+3. Completed: commit five acceptance criteria before implementing the tools.
+4. **In progress:** build and check each tool, then connect the loop and session.
 5. Record real runs, review the changes, and push the submission fork.
 
 ## Data notes

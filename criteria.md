@@ -1,102 +1,91 @@
 # Acceptance criteria — FitFindr
 
-Five criteria that say what "working" means for this agent, written in unit 3
-**before** any results existed.
+These targets were recorded before the tools and loop were implemented.
+Criteria 1 and 2 come from the assignment. I asked Codex to draft reasonable
+targets for 3–5; that assistance is also disclosed in the README.
 
-An acceptance criterion names a target: a number, a count, a rate, or something
-a person could plainly observe. *"The agent handles errors"* is an opinion.
-*"When search returns nothing, the agent stops before calling the second tool,
-in 5 of 5 tries"* is a criterion.
-
-Under each one, write a sentence or two on **why that target** and not a
-stricter one. A reason that says something about your tools, your loop, or the
-data earns credit; *"80% seemed reasonable"* does not.
-
-> Missing your own targets next unit costs you nothing. Setting a target so
-> easy you can't miss it does.
-
-**Two are written for you. You write three.**
-
----
+For next unit's evaluation, turn caching off so repeated model calls are real
+trials. Each trial starts a fresh session. The checks below describe how to
+score a run; these are targets, not results.
 
 ## 1. A matching query completes all three tools
 
 Given a query that matches at least one listing, the agent completes all three
 tool calls and returns a fit card — in at least 4 of 5 tries.
 
-**Why this target:**
-<!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
-     "my search is a plain keyword match and some phrasings will miss" is a
-     real answer. -->
+Use `vintage graphic tee under $30, size M` with the example wardrobe for the
+five tries. A pass has `error is None`, all three tool names in `tool_calls` in
+order, and a nonempty `fit_card`.
 
----
+**Why this target:** Search is local, but the two generation calls depend on
+model availability and can return unusable text. Four of five allows one such
+failure while requiring the full flow to work reliably most of the time.
 
 ## 2. An impossible query stops before the second tool
 
 Given a query that matches no listings, the agent stops before calling
 `suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
 
-**Why this target:**
-<!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
-     about this path? -->
+Use `designer ballgown size XXS under $5` with the example wardrobe. Each pass
+has only `search_listings` in `tool_calls`, `fit_card is None`, and an error
+message naming at least one concrete change to keywords, size, or budget.
 
----
+**Why this target:** This decision uses an empty Python list and never needs the
+model. A failure here would mean the branch is wrong, so I expect all five.
 
-## 3. Something about state
+## 3. The selected item reaches both later tools unchanged
 
-<!-- YOU WRITE THIS ONE.
+Across five fresh runs of `vintage graphic tee under $30, size M` with the
+example wardrobe, the entire listing dictionary in `search_results[0]` must
+equal `selected_item` and the recorded `new_item` input to both `suggest_outfit`
+and `create_fit_card` — 5 of 5 tries, with no second item prompt to the user.
+A run that never reaches either later tool is a failure for this criterion.
 
-     How would you know that the item your search found is the same item the
-     next tool received? Name something countable or observable.
+**Why this target:** Item identity should not vary with the caption wording.
+Comparing the whole dictionary catches a changed price or size even when the
+ID stays the same. Five of five is deliberately strict, including the risk of
+an interrupted model call; the state needs to support the complete chain.
 
-     This is the criterion people find hardest, because state failure doesn't
-     look like state failure — it looks like a tool problem. Something that
-     compares session["selected_item"] against what actually reached
-     suggest_outfit is the shape you're after. -->
+## 4. The caption is short, specific, and grounded
 
+For five uncached runs of `vintage graphic tee under $30, size M` with the
+example wardrobe, at least 4 of 5 fit cards must satisfy all of these checks:
+2–4 sentences, no more than 70 whitespace-separated words, one clear mention
+of the selected item, its exact listed dollar price and platform each once,
+and at least one clothing or accessory detail from `outfit_suggestion`.
+The caption must not invent a brand, material, condition, discount, or shipping
+claim absent from the selected listing. A missing card fails.
 
+Count sentences by terminal `.`, `!`, or `?`, treating consecutive terminal
+marks as one ending and ignoring a decimal point inside a price. Item wording
+can be shortened if it unambiguously identifies the selected piece; platform
+capitalization and trailing price zeros do not matter.
 
-**Why this target:**
+**Why this target:** The caption should sound like a post without making up
+facts. I chose four of five because the model can vary length and wording;
+requiring every check on the same card still makes this a meaningful target.
 
+## 5. Search respects the size and price together
 
+All returned listings must satisfy the requested size and inclusive maximum
+price, and the expected listing below must be present, in 5 of 5 search tests:
 
----
+| Description | Size | Maximum price | Expected ID |
+|---|---|---|---|
+| butterfly | M | 18 | lst_002 |
+| flannel | XL | 22 | lst_003 |
+| platform sneakers | 8 | 48 | lst_019 |
+| jeans | W30 L30 | 38 | lst_001 |
+| track jacket | M | 45 | lst_004 |
 
-## 4. Something about the fit card
+For this check, M accepts M, S/M, or M/L; XL accepts an XL token even with an
+annotation; 8 accepts US 8 but not US 8.5; W30 L30 requires both tokens.
+An empty result fails even though it contains no out-of-budget items.
 
-<!-- YOU WRITE THIS ONE.
-
-     The fit card calls a model, so the same input can produce different words
-     each time. That's not a bug — it's the nature of the tool. So what would
-     make it acceptable?
-
-     Think about what you'd actually be unhappy to see. A caption that never
-     mentions the price? Two different items producing the same opening
-     sentence? A card longer than a caption anyone would post? Any of those can
-     be turned into a number. -->
-
-
-
-**Why this target:**
-
-
-
----
-
-## 5. Your choice
-
-<!-- YOU WRITE THIS ONE TOO.
-
-     Pick something you actually care about getting right. Speed, the empty
-     wardrobe path, what happens when the model can't be reached, whether the
-     search respects a price ceiling — anything, as long as it names a number
-     or an observable outcome. -->
-
-
-
-**Why this target:**
-
-
+**Why this target:** A cheap result is not useful if the size is wrong. These
+checks use exact fields in the supplied data and do not call a model, so five
+of five is reasonable. Requiring a known result also prevents an always-empty
+search from passing.
 
 ---
 
