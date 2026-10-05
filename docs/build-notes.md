@@ -5,8 +5,8 @@
 1. Completed: inspect the starter, read the data, and prepare Python 3.12.
 2. Completed: specify the three tools and the planning rule.
 3. Completed: commit five acceptance criteria before implementing the tools.
-4. **In progress:** build and check each tool, then connect the loop and session.
-5. Record real runs, review the changes, and push the submission fork.
+4. Completed: build and check each tool, then connect the loop and session.
+5. **In progress:** record real runs, review the changes, and push the submission fork.
 
 ## Data notes
 
@@ -49,3 +49,27 @@ python app.py ask 'vintage graphic tee under $30'
 
 0 model calls this session
 ```
+
+## Build verification
+
+The environment check passed all 10 checks on Python 3.12.13, and `pip check`
+reported no broken requirements. Live Gemini calls exercised each tool, the
+complete matching query, and an empty wardrobe. Three uncached caption calls
+on the same input produced different wording. The impossible query stopped
+before either model tool.
+
+Full session checks compared the entire selected listing with the actual
+recorded inputs to both later tools. Independent review found a terminal-period
+parser bug and an inaccurate retry message for the process request budget;
+both were corrected with regression tests. These are build checks, not the
+next unit's five-trial acceptance results.
+
+All 25 offline tests passed after those fixes. The final review found no
+remaining blocking defects. The pre-push secret audit found only the original
+`.env.example` placeholder in the working tree, index, and starter history;
+all three were checked as template text. The real local key and model cache
+are ignored by Git.
+
+Submission repository: https://github.com/ron2k1/RonilBasu-ai201-project2
+Keep this same fork for the next unit. Pasting its URL into the Course Portal
+is the remaining submission step for the account owner.
