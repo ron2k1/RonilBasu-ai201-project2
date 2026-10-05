@@ -1,147 +1,160 @@
-"""
-The FitFindr planning loop.
+"""FitFindr's planning loop and visible state for one request."""
 
-This is the file that makes FitFindr an agent rather than a script. It decides
-which tool to run next based on what the last one returned.
+from copy import deepcopy
+import json
+import math
+import re
 
-If your loop calls all three tools no matter what comes back, you have a list
-of function calls. A loop looks at the last result before it picks the next
-step. **That branch is the graded part of this unit.**
-
-Build and test your three tools in `tools.py` first. Then come here.
-
-    python agent.py          runs both example paths below
-"""
-
-import config
 import trace
+from generate import ModelUnavailable, QuotaGuard
 from tools import search_listings, suggest_outfit, create_fit_card
-from generate import ModelUnavailable
 
 
-# ── session state ─────────────────────────────────────────────────────────────
+_PRICE = re.compile(
+    r"(?:(?:\b(?:under|below|up\s+to|max(?:imum)?(?:\s+price)?|budget(?:\s+of)?))"
+    r"\s*\$?\s*|\$\s*)(-?\d+(?:\.\d{1,2})?)(?!\d|[.,]\d)",
+    re.IGNORECASE,
+)
+_SIZE = re.compile(
+    r"\bsize\s+(one\s+size|w\d+(?:\s+l\d+)?|(?:us\s*)?\d+(?:\.\d+)?"
+    r"|(?:xxxl|xxl|xxs|xs|xl|s|m|l)(?:/(?:xxxl|xxl|xxs|xs|xl|s|m|l))?)"
+    r"(?![a-z0-9]|\.\d)",
+    re.IGNORECASE,
+)
+
+
+def parse_query(query: str) -> dict:
+    """Extract optional labeled size and price ceiling without a model call."""
+    description = query.strip()
+    if not description:
+        raise ValueError("Describe an item, such as 'graphic tee under $30, size M'.")
+    prices = list(_PRICE.finditer(description))
+    if len(prices) > 1:
+        raise ValueError("Use one maximum price, such as 'under $30'.")
+    max_price = float(prices[0].group(1)) if prices else None
+    if max_price is not None and (not math.isfinite(max_price) or max_price < 0):
+        raise ValueError("Use a finite, nonnegative budget, such as 'under $30'.")
+    description = _PRICE.sub(" ", description)
+    if "$" in description or re.search(
+        r"\b(?:under|below|up\s+to|max(?:imum)?(?:\s+price)?|budget)\b",
+        description, re.IGNORECASE,
+    ):
+        raise ValueError("Write the budget as a number, such as 'under $30'.")
+    sizes = list(_SIZE.finditer(description))
+    if len(sizes) > 1:
+        raise ValueError("Use one size request, such as 'size M'.")
+    size = re.sub(r"\s+", " ", sizes[0].group(1)).upper() if sizes else None
+    description = _SIZE.sub(" ", description)
+    if re.search(r"\bsize\b", description, re.IGNORECASE):
+        raise ValueError("Use a size label such as 'size M', 'size US 8', or 'size W30 L30'.")
+    description = re.sub(r"\s+", " ", description.replace(",", " ")).strip()
+    return {"description": description, "size": size, "max_price": max_price}
+
 
 def new_session(query: str, wardrobe: dict) -> dict:
-    """
-    A fresh session for one user interaction.
-
-    The session is the single source of truth for a run. Every tool result goes
-    in here, and the next tool reads it back out.
-
-    You could pass values straight from one call to the next. It would work,
-    and you would not be able to test it — you can't print a variable you have
-    already overwritten. Going through the session is what makes the state
-    visible, and unit 4 has you write a criterion about exactly that.
-
-    Add fields if you need them.
-    """
+    """Keep tool results and snapshots of the inputs actually passed to tools."""
     return {
-        "query": query,              # what the user typed
-        "parsed": {},                # description / size / max_price you pulled out of it
-        "search_results": [],        # everything search_listings returned
-        "selected_item": None,       # the one you chose — goes into suggest_outfit
-        "wardrobe": wardrobe,        # the user's wardrobe
-        "outfit_suggestion": None,   # what suggest_outfit returned
-        "fit_card": None,            # what create_fit_card returned
-        "error": None,               # set when the run ended early
+        "query": query,
+        "parsed": {},
+        "search_results": [],
+        "selected_item": None,
+        "wardrobe": deepcopy(wardrobe),
+        "outfit_suggestion": None,
+        "fit_card": None,
+        "error": None,
+        "tool_calls": [],
     }
 
 
-# ── planning loop ─────────────────────────────────────────────────────────────
-
 def run_agent(query: str, wardrobe: dict) -> dict:
-    """
-    Run the loop once and return the finished session.
-
-    Args:
-        query:    what the user asked for, in plain language
-                  (e.g. "vintage graphic tee under $30, size M").
-        wardrobe: a wardrobe dict — get_example_wardrobe() or
-                  get_empty_wardrobe() from utils/data_loader.py.
-
-    Returns:
-        The session dict. **Check session["error"] first** — if it isn't None,
-        the run ended early and the later fields will still be None.
-
-    ─────────────────────────────────────────────────────────────────────────
-    TODO — build this, following the branch rule you wrote in Milestone 2.
-
-      1. Start a session with new_session().
-
-      2. Count the times round the loop, and call trace.check_iterations(count)
-         on each one before you go again. It raises when the count passes
-         MAX_ITERATIONS in config.py — see trace.py.
-
-      3. Parse the query into a description, a size, and a max_price. Regex,
-         string splitting, or asking the model are all fine — say which you
-         chose in your README. Put the result in session["parsed"].
-
-      4. Call search_listings() with what you parsed.
-         Put the results in session["search_results"].
-
-         ⚠️ THIS IS THE BRANCH. If nothing came back:
-              - put a message in session["error"] saying what the user could
-                change — "No results" is not that message
-              - return the session
-              - do NOT call suggest_outfit with nothing
-
-      5. Choose an item — the first result is fine. Put it in
-         session["selected_item"].
-
-      6. Call suggest_outfit() with the selected item and the wardrobe.
-         Put the result in session["outfit_suggestion"].
-
-      7. Call create_fit_card() with the outfit and the item.
-         Put the result in session["fit_card"].
-
-      8. Return the session.
-
-    ─────────────────────────────────────────────────────────────────────────
-    IN UNIT 4 you come back and add two things:
-
-      • Trace calls. One per step. `trace.step("search_listings", inputs=...,
-        returned=...)` — see trace.py. Your README needs the output.
-
-      • A handler for ModelUnavailable, so a bad key produces a message rather
-        than a stack trace. The import is already at the top of this file.
-    """
+    """Choose each next tool from the last result, saving every result in state."""
     session = new_session(query, wardrobe)
+    try:
+        session["parsed"] = parse_query(session["query"])
+    except ValueError as exc:
+        session["error"] = str(exc)  # Parser messages are local, never provider bodies.
+        return session
 
-    # TODO: delete these two lines and build the loop.
-    session["error"] = "The planning loop isn't built yet — see the TODO in agent.py."
-    return session
+    next_step = "search"
+    iterations = 0
+    while True:
+        iterations += 1
+        try:
+            trace.check_iterations(iterations)
+        except RuntimeError:
+            session["error"] = "Stopped at the loop limit. Check MAX_ITERATIONS in config.py."
+            return session
 
+        try:
+            if next_step == "search":
+                inputs = dict(session["parsed"])
+                session["tool_calls"].append({
+                    "tool": "search_listings", "inputs": deepcopy(inputs),
+                })
+                session["search_results"] = search_listings(**inputs)
+                if not session["search_results"]:
+                    session["error"] = (
+                        "No listings matched those keywords, size, and budget. "
+                        "Try broader keywords, another size, or a higher budget."
+                    )
+                    return session
+                session["selected_item"] = deepcopy(session["search_results"][0])
+                next_step = "outfit"
 
-# ── running it directly ───────────────────────────────────────────────────────
+            elif next_step == "outfit":
+                inputs = {
+                    "new_item": session["selected_item"],
+                    "wardrobe": session["wardrobe"],
+                }
+                session["tool_calls"].append({
+                    "tool": "suggest_outfit", "inputs": deepcopy(inputs),
+                })
+                session["outfit_suggestion"] = suggest_outfit(**inputs)
+                if not session["outfit_suggestion"] or not session["outfit_suggestion"].strip():
+                    session["error"] = "The model returned no outfit. Try the same search again."
+                    return session
+                next_step = "card"
+
+            elif next_step == "card":
+                inputs = {
+                    "outfit": session["outfit_suggestion"],
+                    "new_item": session["selected_item"],
+                }
+                session["tool_calls"].append({
+                    "tool": "create_fit_card", "inputs": deepcopy(inputs),
+                })
+                session["fit_card"] = create_fit_card(**inputs)
+                if not session["fit_card"] or not session["fit_card"].strip():
+                    session["fit_card"] = None
+                    session["error"] = "The model returned no caption. Try the same search again."
+                return session
+
+        except QuotaGuard:
+            session["error"] = (
+                "This session reached its model request budget. Stop the program, "
+                "check the loop and SESSION_REQUEST_BUDGET in config.py, then "
+                "restart when you are ready for a new session."
+            )
+            return session
+        except (ModelUnavailable, RuntimeError):
+            # The adapter can include provider diagnostics in exceptions. Never
+            # send those bodies (which may contain request details) to the CLI.
+            session["error"] = (
+                f"Could not finish the {next_step} step because the model is unavailable "
+                "or its request limit was reached. Wait a moment and try again; "
+                "if it persists, check your local key and model settings."
+            )
+            return session
+
 
 def _show(session: dict) -> None:
-    if session["error"]:
-        print(f"  stopped: {session['error']}")
-        print(f"  fit_card is {session['fit_card']!r} — it should still be None here")
-        return
-
-    item = session["selected_item"] or {}
-    print(f"  found:    {item.get('title')} — ${item.get('price')} on {item.get('platform')}")
-    print(f"  outfit:   {session['outfit_suggestion']}")
-    print(f"  fit card: {session['fit_card']}")
+    print(json.dumps(session, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
     from utils.data_loader import get_example_wardrobe
 
-    print("=== A query the data can match ===")
-    _show(run_agent(
-        query="looking for a vintage graphic tee under $30",
-        wardrobe=get_example_wardrobe(),
-    ))
-
-    print("\n=== A query it can't ===")
-    _show(run_agent(
-        query="designer ballgown size XXS under $5",
-        wardrobe=get_example_wardrobe(),
-    ))
-
-    print(
-        "\nThe second one should stop before the fit card. If both paths look "
-        "the same,\nthe branch isn't doing anything yet."
-    )
+    print("=== Matching query: full session ===")
+    _show(run_agent("vintage graphic tee under $30, size M", get_example_wardrobe()))
+    print("\n=== Empty search: full session ===")
+    _show(run_agent("designer ballgown size XXS under $5", get_example_wardrobe()))

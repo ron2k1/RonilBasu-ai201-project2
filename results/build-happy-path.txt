@@ -1,0 +1,11 @@
+python app.py ask 'vintage graphic tee under $30, size M'
+
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Outfit 1: Pair the Y2K Baby Tee with the baggy straight-leg jeans, chunky white sneakers, and black crossbody bag. The fitted crop length of the butterfly tee balances the relaxed streetwear vibe of the high-waisted dark wash denim.
+
+Outfit 2: Combine the Y2K Baby Tee with the wide-leg khaki trousers, vintage black denim jacket, and black combat boots. Layering the cropped denim jacket over the pink, purple, and white graphic top creates a fun mix of vintage Y2K and edgy grunge elements while keeping the silhouette balanced.
+
+  Fit card: Channel a relaxed streetwear vibe by pairing the Y2K Baby Tee with baggy straight-leg jeans and chunky white sneakers. The fitted crop length of this butterfly print top balances the relaxed denim nicely. You can find this piece on depop for $18.
+
+2 model calls this session, 1212 prompt + 168 output tokens

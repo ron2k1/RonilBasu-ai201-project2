@@ -18,6 +18,7 @@ telling you why. Single quotes are literal in PowerShell, bash and zsh alike.
 """
 
 import argparse
+import json
 import sys
 
 import config
@@ -104,7 +105,7 @@ def cmd_examples(args):
     )
 
 
-def _ask_one(query, wardrobe, use_trace):
+def _ask_one(query, wardrobe, use_trace, show_session=False):
     from agent import run_agent
     import trace as trace_module
 
@@ -132,6 +133,8 @@ def _ask_one(query, wardrobe, use_trace):
                 "  (--trace printed nothing. You haven't added trace.step() calls to\n"
                 "   run_agent() yet — that's unit 4, Milestone 2.)\n"
             )
+    if show_session:
+        print(json.dumps(session, indent=2, ensure_ascii=False))
     return session
 
 
@@ -145,7 +148,7 @@ def cmd_ask(args):
 
     try:
         if args.query:
-            _ask_one(args.query, wardrobe, args.trace)
+            _ask_one(args.query, wardrobe, args.trace, args.session)
         else:
             print("Ask for something, or press Enter on an empty line to quit.\n")
             while True:
@@ -156,7 +159,7 @@ def cmd_ask(args):
                     break
                 if not query:
                     break
-                _ask_one(query, wardrobe, args.trace)
+                _ask_one(query, wardrobe, args.trace, args.session)
     finally:
         print(generate.usage())
 
@@ -184,6 +187,7 @@ def build_parser():
     p_ask = sub.add_parser("ask", help="run the agent")
     p_ask.add_argument("query", nargs="?")
     p_ask.add_argument("--trace", action="store_true", help="print the loop step by step")
+    p_ask.add_argument("--session", action="store_true", help="print the full session and tool inputs")
     p_ask.add_argument(
         "--empty-wardrobe",
         action="store_true",

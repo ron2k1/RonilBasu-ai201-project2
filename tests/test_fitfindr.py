@@ -15,7 +15,7 @@ from unittest.mock import call, patch
 import agent
 import config
 import tools
-from generate import ModelUnavailable
+from generate import ModelUnavailable, QuotaGuard
 from utils.data_loader import get_empty_wardrobe, get_example_wardrobe, load_listings
 
 
@@ -129,6 +129,34 @@ class SearchTests(OfflineTestCase):
 
 
 class QueryParsingTests(OfflineTestCase):
+    def test_terminal_periods_preserve_price_and_size_constraints(self):
+        cases = [
+            ("vintage graphic tee under $30.", None, 30, "lst_002"),
+            ("vintage graphic tee under $30, size M.", "M", 30, "lst_002"),
+            ("butterfly under $18.00, size M.", "M", 18, "lst_002"),
+            ("boots size US 8.5.", "US 8.5", None, "lst_028"),
+        ]
+        for query, size, ceiling, expected_id in cases:
+            with self.subTest(query=query):
+                parsed = agent.parse_query(query)
+                self.assertEqual(parsed["size"], size)
+                self.assertEqual(parsed["max_price"], ceiling)
+                self.assertIn(
+                    expected_id,
+                    [item["id"] for item in tools.search_listings(**parsed)],
+                )
+
+    def test_malformed_or_nonfinite_prices_are_rejected_before_search(self):
+        for price in ["$30.123", "$1,000", "$" + "9" * 400]:
+            with self.subTest(price=price):
+                query = f"vintage graphic tee under {price}"
+                with self.assertRaises(ValueError):
+                    agent.parse_query(query)
+                session = agent.run_agent(query, self.wardrobe)
+                self.assertTrue(session["error"])
+                self.assertEqual(session["tool_calls"], [])
+                self.assertIsNone(session["fit_card"])
+
     def test_documented_queries_extract_constraints_in_either_order(self):
         cases = [
             (MATCHING_QUERY, "M", 30, ["vintage", "graphic", "tee"]),
@@ -156,6 +184,10 @@ class QueryParsingTests(OfflineTestCase):
                     self.assertIn(word, parsed["description"].lower())
                 self.assertNotIn("$", parsed["description"])
                 self.assertNotIn("size", parsed["description"].lower().split())
+                self.assertTrue(
+                    tools.search_listings(**parsed),
+                    "Extracted constraints must still find the documented listing.",
+                )
 
 
 class ModelToolTests(OfflineTestCase):
@@ -323,6 +355,17 @@ class PlanningLoopTests(OfflineTestCase):
         self.assertTrue(session["error"])
         self.assertIsNone(session["fit_card"])
         outfit.assert_not_called()
+        card.assert_not_called()
+
+    def test_session_quota_failure_recommends_restarting(self):
+        with (
+            patch("agent.suggest_outfit", side_effect=QuotaGuard("Offline quota failure")),
+            patch("agent.create_fit_card") as card,
+        ):
+            session = agent.run_agent(MATCHING_QUERY, self.wardrobe)
+        self.assertEqual(session["selected_item"], session["search_results"][0])
+        self.assertIsNone(session["fit_card"])
+        self.assertRegex(session["error"].lower(), r"restart|new (?:session|process)")
         card.assert_not_called()
 
     def test_iteration_limit_stops_before_any_tool(self):

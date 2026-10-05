@@ -3,7 +3,7 @@ python -c "from tools import search_listings; print(search_listings('vintage gra
 
 python -c "from tools import suggest_outfit; from utils.data_loader import load_listings, get_example_wardrobe; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
 Outfit 1:
-Pair the Vintage Levi's 501 Jeans with the White ribbed tank top, Black cropped zip hoodie, and Chunky white sneakers. 
+Pair the Vintage Levi's 501 Jeans with the White ribbed tank top, Black cropped zip hoodie, and Chunky white sneakers.
 Why it works: The fitted white tank balances the cropped black hoodie for a casual, sporty streetwear look that lets the classic medium wash denim stand out.
 
 Outfit 2:
@@ -15,7 +15,7 @@ These vintage Levi's 501 jeans bring an effortless streetwear energy to any look
 
 python -c "from tools import suggest_outfit, create_fit_card, search_listings; from utils.data_loader import load_listings, get_empty_wardrobe; print(search_listings('designer ballgown', size='XXS', max_price=5)); print(suggest_outfit(load_listings()[0], get_empty_wardrobe())); print(create_fit_card(' ', load_listings()[0]))"
 []
-With an empty wardrobe, these Vintage Levi's 501 Jeans offer a versatile foundation for classic and streetwear looks. Since your closet has no items yet, focus on building around the medium wash denim and vintage vibe. 
+With an empty wardrobe, these Vintage Levi's 501 Jeans offer a versatile foundation for classic and streetwear looks. Since your closet has no items yet, focus on building around the medium wash denim and vintage vibe.
 
 For a timeless casual outfit, consider pairing them with a suggested plain white t-shirt and white leather sneakers. For a streetwear edge, try them with a suggested oversized black hoodie and chunky retro trainers. These 501s easily transition between laid-back daytime styles and effortless weekend wear.
 No outfit to caption. Generate an outfit suggestion first.
