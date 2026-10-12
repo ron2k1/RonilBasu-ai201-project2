@@ -1,0 +1,59 @@
+# MCP move check (unit 4, Milestone 1)
+
+Recorded 2026-10-11 22:29 EDT on Python 3.12.13, mcp 1.30.0.
+
+## python mcp_client.py
+
+```text
+Asking mcp_server.py what it offers…
+
+  search_listings
+    Search 40 bundled secondhand clothing listings (sample Depop, thredUp
+    and Poshmark data, not live inventory) by keywords, size and price.
+
+    Returns up to 10 complete listings, best keyword match first, then lower
+    price. Each listing has id, title, description, category, style_tags
+    (list of str), size, condition, price (float, US dollars), colors (list of
+    str), brand (str or null) and platform. When nothing matches, it returns
+    an empty list. That is a normal answer, not an error: broaden the
+    keywords, drop the size, or raise max_price. A negative or non-finite
+    max_price is rejected as an error.
+    
+    - description: string
+    - size: string  (optional)
+    - max_price: number  (optional)
+
+```
+
+## Same inputs, direct call vs. call_tool("search_listings", ...)
+
+```text
+SAME  'vintage graphic tee'    size='M'        max=30.0   -> 1 items ['lst_002']  1195 ms
+SAME  'butterfly'              size='M'        max=18.0   -> 1 items ['lst_002']  630 ms
+SAME  'flannel'                size='XL'       max=22.0   -> 1 items ['lst_003']  637 ms
+SAME  'platform sneakers'      size='8'        max=48.0   -> 1 items ['lst_019']  659 ms
+SAME  'jeans'                  size='W30 L30'  max=38.0   -> 1 items ['lst_001']  658 ms
+SAME  'track jacket'           size='M'        max=45.0   -> 1 items ['lst_004']  625 ms
+SAME  'vintage'                size=None       max=None   -> 10 items ['lst_012', 'lst_006', 'lst_030', 'lst_015']  640 ms
+SAME  'denim jacket'           size=None       max=50.0   -> 1 items ['lst_007']  622 ms
+SAME  'designer ballgown'      size='XXS'      max=5.0    -> 0 items []  665 ms
+SAME  'cardigan'               size='ONE SIZE' max=35.0   -> 1 items ['lst_008']  618 ms
+SAME  'looking for a'          size=None       max=None   -> 0 items []  652 ms
+11/11 identical (values and price types)
+negative price over MCP -> MCPError: Couldn't call 'search_listings' over MCP: unhandled errors in a TaskGroup (1 sub-exception)
+```
+
+## python app.py ask 'vintage graphic tee under $30, size M' (search now over MCP)
+
+```text
+
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Outfit 1: Pair the Y2K Baby Tee with the baggy straight-leg jeans, chunky white sneakers, and black crossbody bag. The fitted crop length of the butterfly tee balances the relaxed streetwear vibe of the high-waisted dark wash denim.
+
+Outfit 2: Combine the Y2K Baby Tee with the wide-leg khaki trousers, vintage black denim jacket, and black combat boots. Layering the cropped denim jacket over the pink, purple, and white graphic top creates a fun mix of vintage Y2K and edgy grunge elements while keeping the silhouette balanced.
+
+  Fit card: Channel a relaxed streetwear vibe by pairing the Y2K Baby Tee with baggy straight-leg jeans and chunky white sneakers. The fitted crop length of this butterfly print top balances the relaxed denim nicely. You can find this piece on depop for $18.
+
+0 model calls this session, 2 served from cache
+```

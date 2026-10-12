@@ -7,7 +7,8 @@ import re
 
 import trace
 from generate import ModelUnavailable, QuotaGuard
-from tools import search_listings, suggest_outfit, create_fit_card
+from mcp_client import MCPError, call_tool
+from tools import suggest_outfit, create_fit_card
 
 
 _PRICE = re.compile(
@@ -91,7 +92,11 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 session["tool_calls"].append({
                     "tool": "search_listings", "inputs": deepcopy(inputs),
                 })
-                session["search_results"] = search_listings(**inputs)
+                # search_listings runs in mcp_server.py; the reply is decoded JSON.
+                results = call_tool("search_listings", inputs)
+                if not isinstance(results, list):
+                    raise MCPError(f"search_listings returned {type(results).__name__}, not a list")
+                session["search_results"] = results
                 if not session["search_results"]:
                     session["error"] = (
                         "No listings matched those keywords, size, and budget. "
@@ -134,6 +139,15 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 "This session reached its model request budget. Stop the program, "
                 "check the loop and SESSION_REQUEST_BUDGET in config.py, then "
                 "restart when you are ready for a new session."
+            )
+            return session
+        except MCPError:
+            # MCPError subclasses RuntimeError, so it must be caught first or
+            # a broken search server would be reported as a model problem.
+            session["error"] = (
+                "Could not reach the search tool, which runs as an MCP server "
+                "(mcp_server.py). Run `python mcp_client.py` to check that the "
+                "server starts and lists search_listings, then try again."
             )
             return session
         except (ModelUnavailable, RuntimeError):

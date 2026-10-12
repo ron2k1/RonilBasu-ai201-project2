@@ -16,6 +16,7 @@ import agent
 import config
 import tools
 from generate import ModelUnavailable, QuotaGuard
+from mcp_client import MCPError, call_tool
 from utils.data_loader import get_empty_wardrobe, get_example_wardrobe, load_listings
 
 
@@ -371,7 +372,7 @@ class PlanningLoopTests(OfflineTestCase):
     def test_iteration_limit_stops_before_any_tool(self):
         with (
             patch.object(config, "MAX_ITERATIONS", 0),
-            patch("agent.search_listings") as search,
+            patch("agent.call_tool") as search,
             patch("agent.suggest_outfit") as outfit,
             patch("agent.create_fit_card") as card,
         ):
@@ -381,6 +382,39 @@ class PlanningLoopTests(OfflineTestCase):
         search.assert_not_called()
         outfit.assert_not_called()
         card.assert_not_called()
+
+
+class MCPSeamTests(OfflineTestCase):
+    """search_listings now runs in mcp_server.py; these start the real server."""
+
+    def test_mcp_search_returns_exactly_what_the_direct_call_returns(self):
+        cases = [
+            {"description": "vintage graphic tee", "size": "M", "max_price": 30.0},
+            {"description": "vintage", "size": None, "max_price": None},
+            {"description": "designer ballgown", "size": "XXS", "max_price": 5.0},
+        ]
+        for inputs in cases:
+            with self.subTest(**inputs):
+                via_mcp = call_tool("search_listings", inputs)
+                self.assertEqual(via_mcp, tools.search_listings(**inputs))
+                self.assertTrue(all(isinstance(item["price"], float) for item in via_mcp))
+
+    def test_unreachable_search_server_names_mcp_not_the_model(self):
+        with (
+            patch("agent.call_tool", side_effect=MCPError("offline server failure")),
+            patch("agent.suggest_outfit") as outfit,
+        ):
+            session = agent.run_agent(MATCHING_QUERY, self.wardrobe)
+        self.assertIn("MCP", session["error"])
+        self.assertNotIn("model", session["error"].lower())
+        self.assertEqual(session["search_results"], [])
+        outfit.assert_not_called()
+
+    def test_non_list_reply_is_treated_as_a_search_failure(self):
+        with patch("agent.call_tool", return_value="not json"):
+            session = agent.run_agent(MATCHING_QUERY, self.wardrobe)
+        self.assertIn("MCP", session["error"])
+        self.assertIsNone(session["selected_item"])
 
 
 if __name__ == "__main__":
