@@ -190,8 +190,34 @@ two specific parts of that work:
    committed before implementation and model runs. The criteria are
    AI-assisted; I am not claiming I wrote them independently.
 
-The sample output above is from actual terminal runs. The next-unit evaluation
-sections below are intentionally left for the next unit.
+The sample output above is from actual terminal runs.
+
+**Unit 4.** For the testing unit I used Claude Code, Anthropic's coding agent,
+and gave it the unit 4 brief. It made the MCP move, added the trace calls and
+the failure handlers, wrote the scenarios and the scorer, ran both evaluations
+and drafted the unit 4 sections of this README. The unit 4 commits are its
+work, done at my request. As with the criteria, I'm not claiming I did this
+part independently. Three specific pieces:
+
+1. **Pass/fail.** `run_eval.py` deliberately doesn't judge tries, so I had it
+   turn each criterion into code (`score_run.py`) and commit that before the
+   first run, so the history shows the rules came first. The scorer was wrong
+   once. It counted "a denim jacket layered over top" as a second naming of
+   the tee. Reading every caption by hand caught it, and the fix went in its
+   own commit, with the original 2/5 left visible in the commit before it.
+2. **Failure messages.** After triggering the three failure modes, it had a
+   separate agent read each message cold, as a user who can't see the code.
+   That read said the empty-wardrobe run "in practice gives me nothing to
+   try", because nothing said the outfit used pieces I don't own. It also said
+   the model-unavailable message "covers two different problems", a bad key
+   and a rate limit, so I couldn't tell whether waiting would help. Both
+   changed: the empty wardrobe now gets a note, and the two causes get
+   separate messages. The before and after transcripts are in
+   [results/failure-modes.md](results/failure-modes.md).
+3. **Choosing the improvement.** It tallied every check across all 15
+   captions from the matching query before picking a fix. That showed one
+   cause, the double naming, so the single allowed change went to the caption
+   prompt, not to anything that was already passing.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
@@ -357,17 +383,73 @@ over top". That was fixed in the open, as described under the table.
      the same length, your branch isn't working — and this is the fastest way
      anyone will ever find that out. -->
 
-**Happy path**
+Both from `python app.py ask '<query>' --trace` with the cache off, on the
+final code (after the improvement). The trace is printed by `trace.py::step`,
+called from `agent.py::run_agent` at each step. Step 2 is the MCP call.
+
+**Happy path**: `python app.py ask 'vintage graphic tee under $30, size M' --trace`
 
 ```
+[1] parse_query (local, no model)
+      in:  vintage graphic tee under $30, size M
+      out: {"description": "vintage graphic tee", "size": "M", "max_price": 30.0}
+[2] search_listings (via MCP)
+      in:  {"description": "vintage graphic tee", "size": "M", "max_price": 30.0}
+      out: 1 items: Y2K Baby Tee — Butterfly Print
+      →    branch: not empty, passing lst_002 to suggest_outfit
+[3] suggest_outfit
+      in:  new_item=lst_002 (Y2K Baby Tee — Butterfly Print), wardrobe=10 items
+      out: Outfit 1: Pair the Y2K Baby Tee with the baggy straight-leg jeans (dark wash) and chunky white sneakers. The f…
+      →    next: create_fit_card
+[4] create_fit_card
+      in:  outfit=(481 chars from suggest_outfit), new_item=lst_002
+      out: Channeling early 2000s streetwear energy, this Y2K Baby Tee pairs effortlessly with baggy dark-wash jeans and …
+      →    done
 
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Outfit 1: Pair the Y2K Baby Tee with the baggy straight-leg jeans (dark wash) and chunky white sneakers. The fitted, cropped pink and purple butterfly tee balances the voluminous, high-waisted dark denim for a classic 2000s streetwear silhouette.
+
+Outfit 2: Style the butterfly tee with the wide-leg khaki trousers and chunky white sneakers. Tucking the fitted white baby tee into the relaxed tan trousers creates a clean contrast, leaning into a casual, earthy Y2K everyday look.
+
+  Fit card: Channeling early 2000s streetwear energy, this Y2K Baby Tee pairs effortlessly with baggy dark-wash jeans and chunky white sneakers. Scoring it for $18 on depop feels like a total win. You can wear it tucked into relaxed trousers for an easy, nostalgic vibe.
+
+2 model calls this session, 1257 prompt + 170 output tokens
 ```
 
-**Empty search**
+**Empty search**: `python app.py ask 'designer ballgown size XXS under $5' --trace`
 
 ```
+[1] parse_query (local, no model)
+      in:  designer ballgown size XXS under $5
+      out: {"description": "designer ballgown", "size": "XXS", "max_price": 5.0}
+[2] search_listings (via MCP)
+      in:  {"description": "designer ballgown", "size": "XXS", "max_price": 5.0}
+      out: [] (empty)
+      →    branch: empty, stopping before suggest_outfit
 
+  No listings matched those keywords, size, and budget. Try broader keywords, another size, or a higher budget.
+
+0 model calls this session
 ```
+
+The empty trace stops after step 2 with 0 model calls, and the happy trace
+goes on to steps 3 and 4. The branch decision is the `→` line under step 2 in
+each.
+
+**Failure modes, triggered on purpose.** Full transcripts, each with its
+trace, are in [results/failure-modes.md](results/failure-modes.md).
+
+| Failure | How I triggered it | What happens now | Change |
+|---|---|---|---|
+| Empty search | `designer ballgown size XXS under $5` | Stops after search with 0 model calls and names three things to change | None needed, it was handled in unit 3 |
+| Empty wardrobe | `--empty-wardrobe` | The outfit uses suggested pieces, and a `Note:` line says they aren't owned and to add items | Added the note (d68a093). Shown in 5 of 5 tries in both eval runs. |
+| Model unavailable | One character of `GEMINI_API_KEY` changed in `.env`, restored after the run, SHA-256 matched | Stops at `suggest_outfit`, keeps the search result, and says to check the key, since waiting won't fix it | Split from the rate-limit message, which still says wait (d68a093) |
+| Search server unreachable (extra, from the MCP move) | `mcp_client.SERVER` pointed at a missing file for one run | Says the MCP search server didn't start and how to check it | New `MCPError` branch. Without it, the error would have been reported as a model failure, because `MCPError` subclasses `RuntimeError`. |
+
+In the trace, the two errors show as `raised X, stopping; earlier results kept`
+at the step where they stopped. The empty search shows `branch: empty`, and
+the empty wardrobe shows `empty wardrobe: general advice, notice saved`.
 
 **On the MCP move:** <!-- what changed in your code, and whether anything
 behaved differently afterwards. If the rewire didn't work, say exactly where it
@@ -412,25 +494,99 @@ Two things behave differently afterwards:
 
      `python run_eval.py --label after` -->
 
-**What I changed:**
+**What I changed:** one instruction in the `create_fit_card` prompt
+(`tools.py`, commit 10391ce). It replaced:
 
-**Which failure it was meant to fix:**
+> Mention the selected item once (you may shorten its title), its exact price
+> $18 once, and its platform depop once.
+
+with:
+
+> Name the selected item exactly once, in the first sentence (you may shorten
+> its title). After that, do not name or re-describe it with any noun; call it
+> only "it" or "this piece". That includes the sentence with its price and
+> platform, and any line you reuse from the outfit suggestion. Give its exact
+> price $18 once and its platform depop once.
+
+It says where the one naming goes and what to call the item afterwards. It
+names both places the second naming used to land. It uses no garment word,
+so it isn't tuned to the tee this query happens to select. The model,
+temperature, inputs and scorer stayed the same. A new offline test,
+`test_fit_card_prompt_caps_the_item_at_one_naming`, pins the instruction.
+
+**Which failure it was meant to fix:** criterion 4, MISSED at 3/5. Every
+failed card named the item twice. The second naming came in the
+price-and-platform sentence or in a line copied from the outfit text (see
+Diagnoses).
 
 ### Run Log — After
 
+`python run_eval.py --label after`, 2026-10-11 22:54, same settings as before:
+gemini-3.5-flash-lite, temperature 0.9, cache off, 50 real model calls.
+Scored by the same `score_run.py` (3557cd3). Raw log:
+[results/run_2026-10-11_2254_after.md](results/run_2026-10-11_2254_after.md).
+Per-try reasons: [results/score_2026-10-11_2254_after.md](results/score_2026-10-11_2254_after.md).
+
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Selected item reaches both later tools unchanged | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Caption is short, specific, and grounded | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Search respects the size and price together | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+
+Before and after, side by side:
+
+| Criterion | Before | After |
+|---|---|---|
+| 1. Matching query completes all three tools | MET (5/5) | MET (5/5) |
+| 2. Impossible query stops before the second tool | MET (5/5) | MET (5/5) |
+| 3. Selected item reaches both later tools unchanged | MET (5/5) | MET (5/5) |
+| 4. Caption is short, specific, and grounded | **MISSED (3/5)** | **MET (5/5)** |
+| 5. Search respects the size and price together | MET (5/5) | MET (5/5) |
 
 **Did it help, and how do I know:**
 
 <!-- If it made things worse, say that. Honestly reported, that earns full
      credit and is more interesting than one that worked. -->
 
+It fixed what it was aimed at, and it caused a new problem that criterion 4
+doesn't measure.
+
+**What it fixed.** Criterion 4 went from 3/5 to 5/5, and my hand read agrees
+with all five passes. Five tries can move a lot by chance, so I also counted
+across all 15 captions the matching query produced (criteria 1, 3 and 4
+share it). Double naming fell from 9 of 15 to 1 of 15. The one left is
+criterion 1 try 1, "the fitted silhouette of the top". The other checks
+stayed clean in both runs, and criteria 1, 2, 3 and 5 held at 5/5. A typical
+after card:
+
+> Channeling an edgy Y2K streetwear vibe, this Y2K Baby Tee brings a playful
+> pop to any daytime look. Pair it with baggy dark wash jeans and chunky black
+> combat boots to balance the fitted silhouette. You can score it for $18 on
+> depop.
+
+One judgment call: criterion 4 try 2 says finding it for $18 "feels like an
+absolute steal". I read that as an opinion, not an invented discount, because
+it claims no markdown or sale. Counted the other way, criterion 4 is 4/5,
+still MET.
+
+**What it made worse.** Reading the after captions turned up a new pattern.
+7 of 15 now open like a haul post: "Scored this Y2K Baby Tee on depop for
+$18", "I just scored this Y2K Butterfly Baby Tee". In thrift slang, "scored"
+means bought, so these claim a purchase happened. The prompt has forbidden
+that since unit 3. Before the change, 0 of 15 did it. They said "You can
+score this piece" or "You could grab", which invite the reader instead. The
+mechanism is my fix. The name has to go in sentence one and can't come back
+in the price line, so the model packs item, platform and price into one
+opener, and in this voice the shortest way to do that is a past-tense haul
+line. Criterion 4's invented-claim list (brand, material, condition,
+discount, shipping) doesn't include purchase claims, so the 5/5 doesn't see
+it. I found it by reading the captions, not from the table.
+
+So the verdict moved from MISSED to MET, and the captions really do name the
+item once now. But they are worse at one rule the tool was already supposed
+to follow.
 
 
 ---
@@ -441,6 +597,36 @@ Two things behave differently afterwards:
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
      left is not. -->
 
+All five criteria are met after the improvement, so nothing here is a missed
+target. These problems are still real:
+
+1. **The captions now claim a purchase (7 of 15 after, 0 before).** My fix
+   caused this (see above). Next I'd change the opener: name the item in
+   sentence one, but put price and platform in a later sentence that offers
+   it to the reader ("Find it on depop for $18"). That keeps the one naming
+   and removes the reason to write "Scored this X for $18". I stopped because
+   the brief allows one improvement, and a second prompt change needs its own
+   before and after run to be measured properly. I'd also add purchase claims
+   to criterion 4's invented-claim list for next time. I didn't change the
+   criterion now, because adding a check after seeing the results is moving
+   the goalposts.
+2. **One double naming remains (1 of 15).** A prompt instruction made it rare
+   but can't rule it out. The way to rule it out is a check after generation
+   that counts namings and retries once. That needs the noun a caption
+   would use ("tee"), and the listing only has a broad category ("tops"), so
+   it's real work and I didn't start it.
+3. **Criterion 4 tests one item.** All five tries caption lst_002, so the
+   naming rule in `score_run.py` only knows that item's nouns. Captions for a
+   listing with a brand or a vaguer title, like the Wrangler jacket in the
+   empty-wardrobe runs, aren't measured. A better test would rotate through
+   several listings the way criterion 5 rotates searches.
+4. **The grounding check is a word list.** It catches named brands, materials
+   and stock phrases. It found nothing in either run, but my reading of all
+   30 captions did the real work, and that doesn't scale past a run this size.
+5. **Two MCP rough edges** (see the MCP note). Each search starts a new server
+   process (~640 ms). An error raised inside the tool arrives as "unhandled
+   errors in a TaskGroup" with the real message lost. The agent can't trigger
+   the second today, but any new input path could.
 
 
 <!-- ═════════════════════════════════════════════════════════════════════
@@ -460,18 +646,18 @@ Two things behave differently afterwards:
 
      SUBMISSION CHECKLIST — unit 4
 
-       [ ] mcp_server.py exists with one tool registered
+       [x] mcp_server.py exists with one tool registered
            (or a written record of exactly where the rewire broke)
-       [ ] Run Log — Before, five criteria, five tries each
-       [ ] Real output pasted underneath, naming file and function
-       [ ] A verdict on every criterion
-       [ ] A diagnosis for every miss, naming a place AND a mechanism
-       [ ] Loop Trace, with the MCP call visible in it
-       [ ] All three failure modes triggered and handled
-       [ ] One improvement, with Run Log — After in the same format
-       [ ] What's Still Broken
-       [ ] At least four new commits
-       [ ] The SAME repository URL as last unit
+       [x] Run Log — Before, five criteria, five tries each
+       [x] Real output pasted underneath, naming file and function
+       [x] A verdict on every criterion
+       [x] A diagnosis for every miss, naming a place AND a mechanism
+       [x] Loop Trace, with the MCP call visible in it
+       [x] All three failure modes triggered and handled
+       [x] One improvement, with Run Log — After in the same format
+       [x] What's Still Broken
+       [x] At least four new commits
+       [x] The SAME repository URL as last unit
 
      Do not delete and recreate this repository. Your commit history is what
      shows your criteria existed before your results did.
