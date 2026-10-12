@@ -211,20 +211,68 @@ sections below are intentionally left for the next unit.
      `python run_eval.py --label before` runs everything and writes the table
      into results/. Paste it here and fill in the verdicts. -->
 
+`python run_eval.py --label before`, 2026-10-11 22:46, gemini-3.5-flash-lite
+at temperature 0.9, cache off, 50 real model calls. Each criterion has its own
+scenario in [scenarios.py](scenarios.py), so each row is five tries of its own.
+Criterion 5's five tries are the five searches in its table, each run through
+the whole agent, so each one is a real MCP call.
+Raw log: [results/run_2026-10-11_2246_before.md](results/run_2026-10-11_2246_before.md),
+with the same tries as data in the `.json` beside it.
+
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Selected item reaches both later tools unchanged | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Caption is short, specific, and grounded | 4 of 5 | PASS | PASS | FAIL | PASS | FAIL | MISSED (3/5) |
+| 5. Search respects the size and price together | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
-**Real output from one try**, pasted as text, naming the file and function
-that produced it:
+PASS/FAIL comes from [score_run.py](score_run.py), which turns each criterion
+into code and was committed (8beda05) before this run started. I also read
+every caption by hand. That read found one scorer false positive: try 2's
+"a denim jacket layered **over top**" uses *top* as an adverb, not as a name
+for the tee. The committed scorer's original 2/5 is in 2e205c4. The fix,
+3557cd3, changed that one cell and no verdict. Per-try reasons:
+[results/score_2026-10-11_2246_before.md](results/score_2026-10-11_2246_before.md).
+
+**Real output from one try**, criterion 4 try 3, from `run_eval.py::write_report`
+(the loop is `agent.py::run_agent`, the caption is `tools.py::create_fit_card`):
 
 ```
+- stopped early: no
+- selected_item: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+- search_results: 1
 
+Outfit suggestion:
+Outfit 1: Pair the Y2K Baby Tee with the Baggy straight-leg jeans, dark wash and Chunky white sneakers. This balances the fitted, cropped butterfly tee with relaxed denim for an authentic Y2K streetwear vibe.
+
+Outfit 2: Combine the Y2K Baby Tee with the Wide-leg khaki trousers, Vintage black denim jacket, and Black combat boots. The pink and purple butterfly graphic pops against earth tones, while the jacket and boots add a nice grunge contrast.
+
+Fit card:
+Channel true Y2K streetwear energy by pairing this butterfly baby tee with relaxed dark wash straight-leg jeans and chunky white sneakers. You could grab this cute top for $18 on depop to complete your nostalgic wardrobe.
+
+Trace:
+[1] parse_query (local, no model)
+      in:  vintage graphic tee under $30, size M
+      out: {"description": "vintage graphic tee", "size": "M", "max_price": 30.0}
+[2] search_listings (via MCP)
+      in:  {"description": "vintage graphic tee", "size": "M", "max_price": 30.0}
+      out: 1 items: Y2K Baby Tee — Butterfly Print
+      →    branch: not empty, passing lst_002 to suggest_outfit
+[3] suggest_outfit
+      in:  new_item=lst_002 (Y2K Baby Tee — Butterfly Print), wardrobe=10 items
+      out: Outfit 1: Pair the Y2K Baby Tee with the Baggy straight-leg jeans, dark wash and Chunky white sneakers. This b…
+      →    next: create_fit_card
+[4] create_fit_card
+      in:  outfit=(450 chars from suggest_outfit), new_item=lst_002
+      out: Channel true Y2K streetwear energy by pairing this butterfly baby tee with relaxed dark wash straight-leg jean…
+      →    done
 ```
+
+Scored by `score_run.py::check_4`: `FAIL — item named 2x | 2 sent, 36 words,
+named 2x, price 1x, platform 1x, details ['jeans', 'sneakers']`. The card names
+the tee as "this butterfly baby tee" and again as "this cute top". Everything
+else on the card passes.
 
 ---
 
@@ -248,13 +296,50 @@ that produced it:
 
 | # | Criterion | Target | Verdict | How I decided |
 |---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
+| 1 | Matching query completes all three tools | 4 of 5 | MET (5/5) | Every try had `error` None, `tool_calls` in the order search_listings, suggest_outfit, create_fit_card, and a nonempty `fit_card`. |
+| 2 | Impossible query stops before the second tool | 5 of 5 | MET (5/5) | Every try had only `search_listings` in `tool_calls`, `fit_card` None, and the error "Try broader keywords, another size, or a higher budget". It used 0 model calls, as the branch should. |
+| 3 | Selected item reaches both later tools unchanged | 5 of 5 | MET (5/5) | The whole lst_002 dict compared equal across `search_results[0]`, `selected_item`, and the `new_item` input recorded for both later tools. |
+| 4 | Caption is short, specific, and grounded | 4 of 5 | MISSED (3/5) | Each card was checked for 2–4 sentences, at most 70 words, exactly one naming of the item (the revision under criterion 4), price and platform once each, an outfit detail, and no invented claim. Tries 3 and 5 named the tee twice. I read all five by hand as well. |
+| 5 | Search respects the size and price together | 5 of 5 | MET (5/5) | Each of the five searches returned only listings within the size rule and price ceiling copied from the criterion, and the expected ID was present every time. |
 
 **Diagnoses**
+
+**Criterion 4 missed, 3 of 5. Place: the model's output, shaped by the prompt
+in `tools.py::create_fit_card`.**
+
+The tool, branch and session all worked. Criterion 3 shows the right item
+reached the caption step every time. The two failed cards broke one rule
+only: each named the item twice. A pattern goes beyond those five tries.
+Criteria 1, 3 and 4 all run the same query, so the run produced 15 captions.
+Across all 15, length, sentence count, price, platform, outfit detail and
+invented claims never failed. The double naming did, on 9 of 15 by my
+reading. Every time, the first naming is the subject of sentence 1 ("pairing
+this butterfly baby tee with...") and the second is a descriptive re-naming
+later on. It lands in one of two places:
+
+- **The price-and-platform sentence (5 of 9):** "You could grab *this cute
+  top* for $18 on depop", "You can score *this graphic top* on depop for $18".
+  The prompt asks for the item, its price and its platform "once" each, in one
+  list. The model reads that as one closing line, "find [item] on [platform]
+  for [price]", and fills the [item] slot again. The passing cards used "this
+  piece" in that slot.
+- **A sentence borrowed from the outfit (4 of 9):** "*The fitted cropped
+  graphic top* balances the voluminous denim". The prompt hands over the
+  whole outfit suggestion, and its "why it works" lines name the tee again.
+  In try 5 the outfit says "The fitted cropped top balances the voluminous
+  dark denim" and the caption copies the sentence, second naming included.
+
+"Mention the selected item once (you may shorten its title)" tells the model
+to mention the item, but nothing caps it at one or says what to call the item
+afterwards. The model treats "once" as "include it". This is one problem
+across 9 captions, not 9 separate problems.
+
+Two notes on how I scored it. Try 4 says "scout this butterfly print for $18".
+That refers to the item with words from its title. The written rule counts
+only the item's noun (tee, t-shirt, top) as a naming, so I followed it and
+counted a pass. Under a stricter reading try 4 fails, which makes 2/5, still
+MISSED. Second, the scorer first counted try 2 as a fail because of "layered
+over top". That was fixed in the open, as described under the table.
 
 
 
@@ -289,6 +374,33 @@ behaved differently afterwards. If the rewire didn't work, say exactly where it
 broke — the error text and the last thing that worked. That earns the point in
 full. -->
 
+`search_listings` now runs on an MCP server. `mcp_server.py` registers it with
+FastMCP over stdio and puts each parameter's description into the tool schema.
+`agent.py::run_agent` calls `mcp_client.call_tool("search_listings", inputs)`
+instead of importing the function. `suggest_outfit` and `create_fit_card` stay
+local. The rewire worked on the first try. [results/mcp-check.txt](results/mcp-check.txt)
+holds the evidence:
+
+- `python mcp_client.py` lists the tool with its schema.
+- 11 inputs, including the five criterion 5 searches and both empty cases,
+  returned identical results direct and over MCP, and prices came back as floats.
+- The happy-path trace above names step 2 `search_listings (via MCP)`.
+
+Two things behave differently afterwards:
+
+1. **Speed.** Each search now takes about 620–660 ms, because the client starts
+   `mcp_server.py` as a new process on every call. The direct call took
+   almost no time. With one search per query this doesn't matter. A loop
+   that searched many times would need one session kept open.
+2. **Errors.** A new failure exists: the server not starting. `run_agent` now
+   catches `MCPError` and says the search tool (MCP) is unreachable, instead
+   of blaming the model. This case is in [results/failure-modes.md](results/failure-modes.md).
+   One rough edge is left. An exception raised *inside* the tool, such as a
+   negative `max_price`, arrives as `unhandled errors in a TaskGroup (1
+   sub-exception)`, with the real reason buried two `ExceptionGroup`s deep.
+   The agent can't trigger this, because `parse_query` never produces a
+   negative price. The brief allows only the MCP move and one improvement as
+   system changes, so I recorded this rather than fixing it.
 
 
 ---
