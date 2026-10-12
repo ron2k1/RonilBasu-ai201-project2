@@ -245,6 +245,15 @@ the whole agent, so each one is a real MCP call.
 Raw log: [results/run_2026-10-11_2246_before.md](results/run_2026-10-11_2246_before.md),
 with the same tries as data in the `.json` beside it.
 
+One environment note. Both eval runs, before and after, used this machine's
+global Python 3.14.3 (mcp 1.26.0, google-genai 1.69.0), not the project's
+`.venv` (Python 3.12.13, mcp 1.30.0, google-genai 1.75.0). I didn't notice
+until `test.py` flagged it afterwards. The code, model, prompt and
+temperature were the same, and the two runs share the interpreter, so the
+before/after comparison is like for like. In the `.venv`, all 31 unit tests
+and all 10 `test.py` checks pass, and the Loop Trace below was recaptured
+there.
+
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
 | 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
@@ -383,9 +392,10 @@ over top". That was fixed in the open, as described under the table.
      the same length, your branch isn't working — and this is the fastest way
      anyone will ever find that out. -->
 
-Both from `python app.py ask '<query>' --trace` with the cache off, on the
-final code (after the improvement). The trace is printed by `trace.py::step`,
-called from `agent.py::run_agent` at each step. Step 2 is the MCP call.
+Both from `python app.py ask '<query>' --trace`, run in the project's `.venv`
+(Python 3.12.13) with the cache off, on the final code (after the
+improvement). The trace is printed by `trace.py::step`, called from
+`agent.py::run_agent` at each step. Step 2 is the MCP call.
 
 **Happy path**: `python app.py ask 'vintage graphic tee under $30, size M' --trace`
 
@@ -399,22 +409,26 @@ called from `agent.py::run_agent` at each step. Step 2 is the MCP call.
       →    branch: not empty, passing lst_002 to suggest_outfit
 [3] suggest_outfit
       in:  new_item=lst_002 (Y2K Baby Tee — Butterfly Print), wardrobe=10 items
-      out: Outfit 1: Pair the Y2K Baby Tee with the baggy straight-leg jeans (dark wash) and chunky white sneakers. The f…
+      out: Outfit 1: Y2K Streetwear Pair your Y2K Butterfly Baby Tee with the Baggy straight-leg jeans, dark wash and Chu…
       →    next: create_fit_card
 [4] create_fit_card
-      in:  outfit=(481 chars from suggest_outfit), new_item=lst_002
-      out: Channeling early 2000s streetwear energy, this Y2K Baby Tee pairs effortlessly with baggy dark-wash jeans and …
+      in:  outfit=(717 chars from suggest_outfit), new_item=lst_002
+      out: I found this Y2K Butterfly Baby Tee on depop for $18. Pair it with baggy dark-wash jeans and chunky white snea…
       →    done
 
   Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
 
-  Outfit:   Outfit 1: Pair the Y2K Baby Tee with the baggy straight-leg jeans (dark wash) and chunky white sneakers. The fitted, cropped pink and purple butterfly tee balances the voluminous, high-waisted dark denim for a classic 2000s streetwear silhouette.
+  Outfit:   Outfit 1: Y2K Streetwear
+Pair your Y2K Butterfly Baby Tee with the Baggy straight-leg jeans, dark wash and Chunky white sneakers. Add the Vintage black denim jacket and Black crossbody bag.
+Why it works: The fitted crop of the baby tee balances the loose, high-waisted fit of the dark denim for an authentic Y2K streetwear silhouette, while the white sneakers tie in the tee's white base.
 
-Outfit 2: Style the butterfly tee with the wide-leg khaki trousers and chunky white sneakers. Tucking the fitted white baby tee into the relaxed tan trousers creates a clean contrast, leaning into a casual, earthy Y2K everyday look.
+Outfit 2: Casual Contrast
+Pair the butterfly tee with the Wide-leg khaki trousers and Black combat boots. Throw on the Black cropped zip hoodie.
+Why it works: Pairing the feminine, graphic baby tee with utilitarian khaki trousers and rugged combat boots creates a cool, balanced contrast that highlights the vintage Y2K style.
 
-  Fit card: Channeling early 2000s streetwear energy, this Y2K Baby Tee pairs effortlessly with baggy dark-wash jeans and chunky white sneakers. Scoring it for $18 on depop feels like a total win. You can wear it tucked into relaxed trousers for an easy, nostalgic vibe.
+  Fit card: I found this Y2K Butterfly Baby Tee on depop for $18. Pair it with baggy dark-wash jeans and chunky white sneakers for an effortless streetwear look. Throw on a black denim jacket and a crossbody bag to complete this nostalgic outfit.
 
-2 model calls this session, 1257 prompt + 170 output tokens
+2 model calls this session, 1311 prompt + 212 output tokens
 ```
 
 **Empty search**: `python app.py ask 'designer ballgown size XXS under $5' --trace`
@@ -521,8 +535,9 @@ Diagnoses).
 
 ### Run Log — After
 
-`python run_eval.py --label after`, 2026-10-11 22:54, same settings as before:
-gemini-3.5-flash-lite, temperature 0.9, cache off, 50 real model calls.
+`python run_eval.py --label after`, 2026-10-11 22:54, same settings and the
+same interpreter as before: gemini-3.5-flash-lite, temperature 0.9, cache off,
+50 real model calls.
 Scored by the same `score_run.py` (3557cd3). Raw log:
 [results/run_2026-10-11_2254_after.md](results/run_2026-10-11_2254_after.md).
 Per-try reasons: [results/score_2026-10-11_2254_after.md](results/score_2026-10-11_2254_after.md).
@@ -582,7 +597,9 @@ in the price line, so the model packs item, platform and price into one
 opener, and in this voice the shortest way to do that is a past-tense haul
 line. Criterion 4's invented-claim list (brand, material, condition,
 discount, shipping) doesn't include purchase claims, so the 5/5 doesn't see
-it. I found it by reading the captions, not from the table.
+it. I found it by reading the captions, not from the table. The Loop Trace
+card, captured separately afterwards, opens the same way: "I found this Y2K
+Butterfly Baby Tee on depop for $18."
 
 So the verdict moved from MISSED to MET, and the captions really do name the
 item once now. But they are worse at one rule the tool was already supposed
