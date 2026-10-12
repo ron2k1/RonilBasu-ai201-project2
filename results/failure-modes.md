@@ -160,6 +160,33 @@ The lines in parentheses come from the helper that edited `.env`, ran the
 query, and restored the file; it compares SHA-256 before and after and never
 prints the key.
 
+Later fix, made after the eval runs at my request (README What's Still
+Broken item 6). A review found the second message too sure of itself:
+`generate.py` raises `ModelUnavailable` for a temporary 503 "overloaded" and
+for a blank answer too, and waiting does fix those. The message now covers
+both. Third trigger, on a new query, in the project venv (Python 3.12.13):
+
+```text
+.venv/Scripts/python.exe badkey.py 'chunky knit cardigan under $50'
+(.env key changed in one character; query: 'chunky knit cardigan under $50')
+[1] parse_query (local, no model)
+      in:  chunky knit cardigan under $50
+      out: {"description": "chunky knit cardigan", "size": null, "max_price": 50.0}
+[2] search_listings (via MCP)
+      in:  {"description": "chunky knit cardigan", "size": null, "max_price": 50.0}
+      out: 1 items: Knit Cardigan — Chunky Brown
+      →    branch: not empty, passing lst_008 to suggest_outfit
+[3] suggest_outfit
+      in:  new_item=lst_008 (Knit Cardigan — Chunky Brown), wardrobe=10 items
+      →    raised ModelUnavailable, stopping; earlier results kept
+
+  Couldn't reach the model, so the outfit suggestion wasn't written. Check that GEMINI_API_KEY in .env is correct and that you're online. If both are fine, the model may be overloaded, so try again in a minute.
+
+1 model calls this session
+(exit code 0)
+(.env restored byte-for-byte: True)
+```
+
 ## 4. Search server unreachable (added by the MCP move, not one of the three)
 
 `mcp_client.SERVER` pointed at a file that does not exist, for one run only:

@@ -390,6 +390,16 @@ class PlanningLoopTests(OfflineTestCase):
                 self.assertIn("outfit suggestion", error)
                 self.assertNotIn("unsafe_provider_detail_sentinel", error)
 
+    def test_unreachable_model_message_allows_for_a_temporary_outage(self):
+        # ModelUnavailable also covers a 503 "overloaded" and a blank answer, so the
+        # message can't promise that waiting won't help.
+        with patch("agent.suggest_outfit", side_effect=ModelUnavailable("x")):
+            session = agent.run_agent(MATCHING_QUERY, self.wardrobe)
+        error = session["error"].lower()
+        self.assertNotIn("won't fix", error)
+        self.assertIn("overloaded", error)
+        self.assertIn("try again", error)
+
     def test_malformed_budget_stops_without_downstream_calls(self):
         with (
             patch("agent.suggest_outfit") as outfit,

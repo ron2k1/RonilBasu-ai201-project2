@@ -207,7 +207,8 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             session["error"] = (
                 f"Couldn't reach the model, so the {_UNFINISHED[next_step]} wasn't "
                 "written. Check that GEMINI_API_KEY in .env is correct and that "
-                "you're online, then ask again. Waiting won't fix this one."
+                "you're online. If both are fine, the model may be overloaded, "
+                "so try again in a minute."
             )
             return session
         except RuntimeError as exc:

@@ -223,9 +223,11 @@ part independently. Three specific pieces:
    and quote in these sections against the committed result files and git
    history. The counts held up. It found that an earlier draft said captions
    were read "by hand" in my voice. At that point Claude Code had read them,
-   not me, so the wording was fixed. I have since read all 30 myself. It also found one quote that wasn't verbatim, two
-   claims stated more broadly than the data, and the overconfident error
-   message in What's Still Broken item 6. All are corrected or listed.
+   not me, so the wording was fixed. I have since read all 30 myself. It also
+   found one quote that wasn't verbatim, two claims stated more broadly than
+   the data, and the overconfident error message in What's Still Broken
+   item 6, which was reworded after the after-run. All are corrected or
+   listed.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
@@ -472,7 +474,7 @@ trace, are in [results/failure-modes.md](results/failure-modes.md).
 |---|---|---|---|
 | Empty search | `designer ballgown size XXS under $5` | Stops after search with 0 model calls and names three things to change | None needed, it was handled in unit 3 |
 | Empty wardrobe | `--empty-wardrobe` | The outfit uses suggested pieces, and a `Note:` line says they aren't owned and to add items | Added the note (d68a093). Shown in 5 of 5 tries in both eval runs. |
-| Model unavailable | One character of `GEMINI_API_KEY` changed in `.env`, restored after the run, SHA-256 matched | Stops at `suggest_outfit`, keeps the search result, and says to check the key, since waiting won't fix it | Split from the rate-limit message, which still says wait (d68a093) |
+| Model unavailable | One character of `GEMINI_API_KEY` changed in `.env`, restored after the run, SHA-256 matched | Stops at `suggest_outfit`, keeps the search result, and says to check the key and connection, then to try again in a minute if both are fine | Split from the rate-limit message (d68a093). Reworded after the eval runs, because the same error also covers a temporary overload (What's Still Broken 6) |
 | Search server unreachable (extra, from the MCP move) | `mcp_client.SERVER` pointed at a missing file for one run | Says the MCP search server didn't start and how to check it | New `MCPError` branch. Without it, the error would have been reported as a model failure, because `MCPError` subclasses `RuntimeError`. |
 
 In the trace, the two errors show as `raised X, stopping; earlier results kept`
@@ -665,20 +667,23 @@ target. These problems are still real:
    process (~640 ms). An error raised inside the tool arrives as "unhandled
    errors in a TaskGroup" with the real message lost. The agent can't trigger
    the second today, but any new input path could.
-6. **The model-unavailable message is too sure of itself.** The new message
-   says to check the key and that "waiting won't fix this one". But
+6. **The model-unavailable message can't say which problem it hit.**
    `generate.py` turns every error that isn't a rate limit into
-   `ModelUnavailable`, which includes a temporary 503 "model is overloaded".
-   `suggest_outfit` and `create_fit_card` raise it for a blank answer too. For
-   those, the key is fine and waiting does help. The bad-key trigger in
-   failure-modes.md got the right advice, and an overloaded model would get
-   the wrong advice. The fix is one line: "Check that GEMINI_API_KEY in .env
-   is correct and that you're online. If both are fine, the model may be
-   overloaded, so try again in a minute." The same review found the agent's
-   own "The model returned no outfit" branch can never run, because the tool
-   raises first. I left both, since this was found after the after-run, and
-   the brief allows only the MCP move and the one improvement as system
-   changes.
+   `ModelUnavailable`. That covers a bad key, a temporary 503 "model is
+   overloaded", and a blank answer, which `suggest_outfit` and
+   `create_fit_card` raise as the same error. The message used to say
+   "waiting won't fix this one", which is wrong for the last two. A review
+   found this after the after-run, and I had the message reworded anyway:
+   "Check that GEMINI_API_KEY in .env is correct and that you're online. If
+   both are fine, the model may be overloaded, so try again in a minute." That
+   goes past the brief's limit of the MCP move plus one improvement, so it
+   isn't counted as the improvement. It changes only that message's text, and
+   no try in either eval run reached that branch, so the before and after
+   numbers are unaffected. The reworded message, triggered with a bad key, is
+   in failure-modes.md. The real fix is a separate error type for each cause,
+   so the message can name the one that happened. The same review found the
+   agent's own "The model returned no outfit" branch can never run, because
+   the tool raises first. That branch is still there.
 
 
 <!-- ═════════════════════════════════════════════════════════════════════
