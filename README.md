@@ -203,7 +203,8 @@ part independently. Three specific pieces:
    turn each criterion into code (`score_run.py`) and commit that before the
    first run, so the history shows the rules came first. The scorer was wrong
    once. It counted "a denim jacket layered over top" as a second naming of
-   the tee. Reading every caption by hand caught it, and the fix went in its
+   the tee. Claude Code reading every caption in full, instead of trusting the
+   scorer, caught it, and the fix went in its
    own commit, with the original 2/5 left visible in the commit before it.
 2. **Failure messages.** After triggering the three failure modes, it had a
    separate agent read each message cold, as a user who can't see the code.
@@ -218,6 +219,13 @@ part independently. Three specific pieces:
    captions from the matching query before picking a fix. That showed one
    cause, the double naming, so the single allowed change went to the caption
    prompt, not to anything that was already passing.
+4. **Checking the write-up.** A separate review agent checked every number
+   and quote in these sections against the committed result files and git
+   history. The counts held up. It found that an earlier draft said captions
+   were read "by hand" in my voice. They were read by Claude Code, not me, so
+   that wording is fixed. It also found one quote that wasn't verbatim, two
+   claims stated more broadly than the data, and the overconfident error
+   message in What's Still Broken item 6. All are corrected or listed.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
@@ -237,6 +245,11 @@ part independently. Three specific pieces:
      `python run_eval.py --label before` runs everything and writes the table
      into results/. Paste it here and fill in the verdicts. -->
 
+Unit 4 was carried out by Claude Code at my request (see How I Used AI).
+Where these sections say captions were read, Claude Code read each full
+caption, not just the scorer's verdict. The judgment calls noted below are
+its calls. I haven't re-read all 30 captions myself.
+
 `python run_eval.py --label before`, 2026-10-11 22:46, gemini-3.5-flash-lite
 at temperature 0.9, cache off, 50 real model calls. Each criterion has its own
 scenario in [scenarios.py](scenarios.py), so each row is five tries of its own.
@@ -247,7 +260,7 @@ with the same tries as data in the `.json` beside it.
 
 One environment note. Both eval runs, before and after, used this machine's
 global Python 3.14.3 (mcp 1.26.0, google-genai 1.69.0), not the project's
-`.venv` (Python 3.12.13, mcp 1.30.0, google-genai 1.75.0). I didn't notice
+`.venv` (Python 3.12.13, mcp 1.30.0, google-genai 1.75.0). That wasn't noticed
 until `test.py` flagged it afterwards. The code, model, prompt and
 temperature were the same, and the two runs share the interpreter, so the
 before/after comparison is like for like. In the `.venv`, all 31 unit tests
@@ -263,9 +276,9 @@ there.
 | 5. Search respects the size and price together | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
 PASS/FAIL comes from [score_run.py](score_run.py), which turns each criterion
-into code and was committed (8beda05) before this run started. I also read
-every caption by hand. That read found one scorer false positive: try 2's
-"a denim jacket layered **over top**" uses *top* as an adverb, not as a name
+into code and was committed (8beda05) before this run started. Claude Code
+also read every caption in full. That read found one scorer false positive:
+try 2's "A cropped vintage denim jacket layered **over top**" uses *top* as an adverb, not as a name
 for the tee. The committed scorer's original 2/5 is in 2e205c4. The fix,
 3557cd3, changed that one cell and no verdict. Per-try reasons:
 [results/score_2026-10-11_2246_before.md](results/score_2026-10-11_2246_before.md).
@@ -334,7 +347,7 @@ else on the card passes.
 | 1 | Matching query completes all three tools | 4 of 5 | MET (5/5) | Every try had `error` None, `tool_calls` in the order search_listings, suggest_outfit, create_fit_card, and a nonempty `fit_card`. |
 | 2 | Impossible query stops before the second tool | 5 of 5 | MET (5/5) | Every try had only `search_listings` in `tool_calls`, `fit_card` None, and the error "Try broader keywords, another size, or a higher budget". It used 0 model calls, as the branch should. |
 | 3 | Selected item reaches both later tools unchanged | 5 of 5 | MET (5/5) | The whole lst_002 dict compared equal across `search_results[0]`, `selected_item`, and the `new_item` input recorded for both later tools. |
-| 4 | Caption is short, specific, and grounded | 4 of 5 | MISSED (3/5) | Each card was checked for 2–4 sentences, at most 70 words, exactly one naming of the item (the revision under criterion 4), price and platform once each, an outfit detail, and no invented claim. Tries 3 and 5 named the tee twice. I read all five by hand as well. |
+| 4 | Caption is short, specific, and grounded | 4 of 5 | MISSED (3/5) | Each card was checked for 2–4 sentences, at most 70 words, exactly one naming of the item (the revision under criterion 4), price and platform once each, an outfit detail, and no invented claim. Tries 3 and 5 named the tee twice. Claude Code also read all five in full. |
 | 5 | Search respects the size and price together | 5 of 5 | MET (5/5) | Each of the five searches returned only listings within the size rule and price ceiling copied from the criterion, and the expected ID was present every time. |
 
 **Diagnoses**
@@ -347,8 +360,8 @@ reached the caption step every time. The two failed cards broke one rule
 only: each named the item twice. A pattern goes beyond those five tries.
 Criteria 1, 3 and 4 all run the same query, so the run produced 15 captions.
 Across all 15, length, sentence count, price, platform, outfit detail and
-invented claims never failed. The double naming did, on 9 of 15 by my
-reading. Every time, the first naming is the subject of sentence 1 ("pairing
+invented claims never failed. The double naming did, on 9 of 15 when
+read in full. Every time, the first naming is the subject of sentence 1 ("pairing
 this butterfly baby tee with...") and the second is a descriptive re-naming
 later on. It lands in one of two places:
 
@@ -356,8 +369,8 @@ later on. It lands in one of two places:
   top* for $18 on depop", "You can score *this graphic top* on depop for $18".
   The prompt asks for the item, its price and its platform "once" each, in one
   list. The model reads that as one closing line, "find [item] on [platform]
-  for [price]", and fills the [item] slot again. The passing cards used "this
-  piece" in that slot.
+  for [price]", and fills the [item] slot again. Some passing cards used
+  "this piece" in that slot.
 - **A sentence borrowed from the outfit (4 of 9):** "*The fitted cropped
   graphic top* balances the voluminous denim". The prompt hands over the
   whole outfit suggestion, and its "why it works" lines name the tee again.
@@ -369,10 +382,10 @@ to mention the item, but nothing caps it at one or says what to call the item
 afterwards. The model treats "once" as "include it". This is one problem
 across 9 captions, not 9 separate problems.
 
-Two notes on how I scored it. Try 4 says "scout this butterfly print for $18".
-That refers to the item with words from its title. The written rule counts
-only the item's noun (tee, t-shirt, top) as a naming, so I followed it and
-counted a pass. Under a stricter reading try 4 fails, which makes 2/5, still
+Two notes on how it was scored. Try 4 says "scout this butterfly print for
+$18". That refers to the item with words from its title. The written rule
+counts only the item's noun (tee, t-shirt, top) as a naming, so the rule was
+followed and try 4 counted as a pass. Under a stricter reading try 4 fails, which makes 2/5, still
 MISSED. Second, the scorer first counted try 2 as a fail because of "layered
 over top". That was fixed in the open, as described under the table.
 
@@ -568,9 +581,9 @@ Before and after, side by side:
 It fixed what it was aimed at, and it caused a new problem that criterion 4
 doesn't measure.
 
-**What it fixed.** Criterion 4 went from 3/5 to 5/5, and my hand read agrees
-with all five passes. Five tries can move a lot by chance, so I also counted
-across all 15 captions the matching query produced (criteria 1, 3 and 4
+**What it fixed.** Criterion 4 went from 3/5 to 5/5, and a full read of each
+caption agrees with all five passes. Five tries can move a lot by chance, so
+Claude Code also counted across all 15 captions the matching query produced (criteria 1, 3 and 4
 share it). Double naming fell from 9 of 15 to 1 of 15. The one left is
 criterion 1 try 1, "the fitted silhouette of the top". The other checks
 stayed clean in both runs, and criteria 1, 2, 3 and 5 held at 5/5. A typical
@@ -582,22 +595,23 @@ after card:
 > depop.
 
 One judgment call: criterion 4 try 2 says finding it for $18 "feels like an
-absolute steal". I read that as an opinion, not an invented discount, because
-it claims no markdown or sale. Counted the other way, criterion 4 is 4/5,
+absolute steal". That was read as an opinion, not an invented discount,
+because it claims no markdown or sale. Counted the other way, criterion 4 is 4/5,
 still MET.
 
 **What it made worse.** Reading the after captions turned up a new pattern.
-7 of 15 now open like a haul post: "Scored this Y2K Baby Tee on depop for
-$18", "I just scored this Y2K Butterfly Baby Tee". In thrift slang, "scored"
-means bought, so these claim a purchase happened. The prompt has forbidden
-that since unit 3. Before the change, 0 of 15 did it. They said "You can
-score this piece" or "You could grab", which invite the reader instead. The
-mechanism is my fix. The name has to go in sentence one and can't come back
-in the price line, so the model packs item, platform and price into one
-opener, and in this voice the shortest way to do that is a past-tense haul
-line. Criterion 4's invented-claim list (brand, material, condition,
+7 of 15 now claim a purchase happened, 6 of them in a haul-post opener:
+"Scored this Y2K Baby Tee on depop for $18", "I just scored this Y2K
+Butterfly Baby Tee". The seventh says it in sentence 2: "I scored it on depop
+for $18". In thrift slang, "scored" means bought. The prompt has forbidden
+purchase claims since unit 3. Before the change, 0 of 15 made one. They said
+"You can score this piece" or "You could grab", which invite the reader
+instead. The fix itself is the mechanism, at least for the six openers. The
+name has to go in sentence one and can't come back in the price line, so the
+model packs item, platform and price into one opener, and in this voice the
+shortest way to do that is a past-tense haul line. Criterion 4's invented-claim list (brand, material, condition,
 discount, shipping) doesn't include purchase claims, so the 5/5 doesn't see
-it. I found it by reading the captions, not from the table. The Loop Trace
+it. It was found by reading the captions, not from the table. The Loop Trace
 card, captured separately afterwards, opens the same way: "I found this Y2K
 Butterfly Baby Tee on depop for $18."
 
@@ -638,12 +652,32 @@ target. These problems are still real:
    empty-wardrobe runs, aren't measured. A better test would rotate through
    several listings the way criterion 5 rotates searches.
 4. **The grounding check is a word list.** It catches named brands, materials
-   and stock phrases. It found nothing in either run, but my reading of all
-   30 captions did the real work, and that doesn't scale past a run this size.
+   and stock phrases. It found nothing in either run, but reading all 30
+   captions in full did the real work, and that doesn't scale past a run this
+   size. The list can also misfire on ordinary words. "delivers Y2K energy"
+   would count as a shipping claim, "mint green" as a condition, "I guess" or
+   "the colors mesh" as a brand or material. In the naming rule, "top it off"
+   would count as naming the item. None of these came up in either run, so no
+   cell changes, but a bigger test would need a real classifier or a human
+   reader.
 5. **Two MCP rough edges** (see the MCP note). Each search starts a new server
    process (~640 ms). An error raised inside the tool arrives as "unhandled
    errors in a TaskGroup" with the real message lost. The agent can't trigger
    the second today, but any new input path could.
+6. **The model-unavailable message is too sure of itself.** The new message
+   says to check the key and that "waiting won't fix this one". But
+   `generate.py` turns every error that isn't a rate limit into
+   `ModelUnavailable`, which includes a temporary 503 "model is overloaded".
+   `suggest_outfit` and `create_fit_card` raise it for a blank answer too. For
+   those, the key is fine and waiting does help. The bad-key trigger in
+   failure-modes.md got the right advice, and an overloaded model would get
+   the wrong advice. The fix is one line: "Check that GEMINI_API_KEY in .env
+   is correct and that you're online. If both are fine, the model may be
+   overloaded, so try again in a minute." The same review found the agent's
+   own "The model returned no outfit" branch can never run, because the tool
+   raises first. I left both, since this was found after the after-run, and
+   the brief allows only the MCP move and the one improvement as system
+   changes.
 
 
 <!-- ═════════════════════════════════════════════════════════════════════
