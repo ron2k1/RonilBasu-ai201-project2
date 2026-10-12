@@ -347,6 +347,35 @@ class PlanningLoopTests(OfflineTestCase):
                 else:
                     self.assertEqual(session["outfit_suggestion"], "Offline outfit.")
 
+    def test_empty_wardrobe_saves_a_notice_saying_what_to_add(self):
+        for wardrobe, expect_notice in [(get_empty_wardrobe(), True), (self.wardrobe, False)]:
+            with self.subTest(items=len(wardrobe["items"])):
+                with (
+                    patch("agent.suggest_outfit", return_value="Offline general advice."),
+                    patch("agent.create_fit_card", return_value="Offline caption."),
+                ):
+                    session = agent.run_agent(MATCHING_QUERY, wardrobe)
+                self.assertIsNone(session["error"])
+                if expect_notice:
+                    self.assertRegex(session["notice"].lower(), r"wardrobe is empty")
+                    self.assertRegex(session["notice"].lower(), r"add .*items")
+                else:
+                    self.assertIsNone(session["notice"])
+
+    def test_unreachable_model_and_rate_limit_get_different_advice(self):
+        for failure, expected, unexpected in [
+            (ModelUnavailable("UNSAFE_PROVIDER_DETAIL_SENTINEL"), r"gemini_api_key", r"wait a minute"),
+            (RuntimeError("UNSAFE_PROVIDER_DETAIL_SENTINEL"), r"wait a minute", r"gemini_api_key"),
+        ]:
+            with self.subTest(failure=type(failure).__name__):
+                with patch("agent.suggest_outfit", side_effect=failure):
+                    session = agent.run_agent(MATCHING_QUERY, self.wardrobe)
+                error = session["error"].lower()
+                self.assertRegex(error, expected)
+                self.assertNotRegex(error, unexpected)
+                self.assertIn("outfit suggestion", error)
+                self.assertNotIn("unsafe_provider_detail_sentinel", error)
+
     def test_malformed_budget_stops_without_downstream_calls(self):
         with (
             patch("agent.suggest_outfit") as outfit,

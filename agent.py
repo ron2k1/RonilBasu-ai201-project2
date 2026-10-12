@@ -63,6 +63,7 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "outfit_suggestion": None,
         "fit_card": None,
         "error": None,
+        "notice": None,
         "tool_calls": [],
     }
 
@@ -72,6 +73,7 @@ _STEP_NAMES = {
     "outfit": "suggest_outfit",
     "card": "create_fit_card",
 }
+_UNFINISHED = {"search": "search", "outfit": "outfit suggestion", "card": "fit card"}
 
 
 def _trace_stop(next_step: str, shown, exc: Exception) -> None:
@@ -146,8 +148,18 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     trace.step(_STEP_NAMES["outfit"], inputs=shown, returned="(blank)",
                                note="no outfit, stopping before create_fit_card")
                     return session
+                note = "next: create_fit_card"
+                if not session["wardrobe"].get("items"):
+                    # The advice itself reads like a normal result, so say why
+                    # it names pieces the user doesn't own and what fixes it.
+                    session["notice"] = (
+                        "Your wardrobe is empty, so this outfit uses suggested "
+                        "pieces you don't own. Add a few items to your wardrobe "
+                        "to get outfits built from your own clothes."
+                    )
+                    note = "empty wardrobe: general advice, notice saved; " + note
                 trace.step(_STEP_NAMES["outfit"], inputs=shown,
-                           returned=session["outfit_suggestion"], note="next: create_fit_card")
+                           returned=session["outfit_suggestion"], note=note)
                 next_step = "card"
 
             elif next_step == "card":
@@ -187,14 +199,24 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 "server starts and lists search_listings, then try again."
             )
             return session
-        except (ModelUnavailable, RuntimeError) as exc:
-            # The adapter can include provider diagnostics in exceptions. Never
-            # send those bodies (which may contain request details) to the CLI.
+        # The adapter can include provider diagnostics in exceptions. Never
+        # send those bodies (which may contain request details) to the CLI;
+        # each branch below shows a fixed message instead.
+        except ModelUnavailable as exc:
             _trace_stop(next_step, shown, exc)
             session["error"] = (
-                f"Could not finish the {next_step} step because the model is unavailable "
-                "or its request limit was reached. Wait a moment and try again; "
-                "if it persists, check your local key and model settings."
+                f"Couldn't reach the model, so the {_UNFINISHED[next_step]} wasn't "
+                "written. Check that GEMINI_API_KEY in .env is correct and that "
+                "you're online, then ask again. Waiting won't fix this one."
+            )
+            return session
+        except RuntimeError as exc:
+            # generate() raises RuntimeError only after its rate-limit retries.
+            _trace_stop(next_step, shown, exc)
+            session["error"] = (
+                f"The model is still rate limited after several retries, so the "
+                f"{_UNFINISHED[next_step]} wasn't written. Wait a minute, then ask "
+                "again. Your key is fine."
             )
             return session
 
