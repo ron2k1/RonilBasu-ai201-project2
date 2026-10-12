@@ -112,8 +112,12 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
     prompt = (
         "Write a casual thrift-fit caption in 2–4 complete sentences, at most "
         "70 words. Return only the caption, without a heading, quotes, or hashtags. "
-        "Mention the selected item once (you may shorten its title), its exact "
-        f"price {price} once, and its platform {new_item['platform']} once. "
+        "Name the selected item exactly once, in the first sentence (you may "
+        "shorten its title). After that, do not name or re-describe it with any "
+        'noun; call it only "it" or "this piece". That includes the sentence '
+        "with its price and platform, and any line you reuse from the outfit "
+        f"suggestion. Give its exact price {price} once and its platform "
+        f"{new_item['platform']} once. "
         "Include at least one outfit detail. Give the outfit a specific vibe, "
         "but do not invent brand, material, condition, discounts, shipping, "
         "availability, or claims that a purchase has happened. If the outfit "

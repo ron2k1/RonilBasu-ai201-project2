@@ -230,6 +230,20 @@ class ModelToolTests(OfflineTestCase):
         self.assertIn(str(self.item["price"]), prompt)
         self.assertIn(self.item["platform"], prompt)
 
+    def test_fit_card_prompt_caps_the_item_at_one_naming(self):
+        # Unit 4: 9 of 15 before-run captions named the item twice, first in
+        # sentence one, then in the price-and-platform line or in a line lifted
+        # from the outfit. The prompt has to say where the one naming goes and
+        # what to call the item after it, without naming any particular garment.
+        self.allow_model("Offline caption test double.")
+        tools.create_fit_card("Offline outfit with the supplied pieces.", self.item)
+        prompt = self.sent_prompt().lower()
+        self.assertIn("exactly once", prompt)
+        self.assertIn("first sentence", prompt)
+        self.assertIn('"this piece"', prompt)
+        self.assertIn("price and platform", prompt)
+        self.assertIn("reuse from the outfit suggestion", prompt)
+
     def test_absent_input_guards_do_not_call_model(self):
         self.assertEqual(
             tools.suggest_outfit({}, self.wardrobe),
