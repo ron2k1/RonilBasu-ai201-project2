@@ -30,6 +30,7 @@ mode — caching is what usually explains it.
 
 import argparse
 import datetime as dt
+import json
 import sys
 import traceback
 
@@ -37,7 +38,7 @@ import config
 import scenarios as scenario_module
 
 
-def run_once(scenario, use_trace=True):
+def run_once(scenario, query, use_trace=True):
     """One scenario, one try. Returns everything worth recording."""
     from agent import run_agent
     from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
@@ -50,9 +51,9 @@ def run_once(scenario, use_trace=True):
     if use_trace:
         trace_module.start_trace()
 
-    record = {"error": None, "session": None, "trace": "", "crashed": None}
+    record = {"query": query, "error": None, "session": None, "trace": "", "crashed": None}
     try:
-        record["session"] = run_agent(scenario["query"], wardrobe)
+        record["session"] = run_agent(query, wardrobe)
     except Exception as exc:  # noqa: BLE001 — a crash is a result worth logging
         record["crashed"] = f"{type(exc).__name__}: {exc}"
         record["traceback"] = traceback.format_exc()
@@ -91,22 +92,26 @@ def main():
     rows = []
     for scenario in scenario_module.SCENARIOS:
         print(f"{scenario['name']}  ({scenario['wardrobe']} wardrobe)")
-        print(f"  query: {scenario['query']}")
+        varies = bool(scenario.get("queries"))
+        if not varies:
+            print(f"  query: {scenario['query']}")
 
         tries = []
         for attempt in range(1, args.tries + 1):
-            record = run_once(scenario)
+            query = scenario_module.query_for(scenario, attempt)
+            record = run_once(scenario, query)
             tries.append(record)
+            shown = f" [{query}]" if varies else ""
 
             if record["crashed"]:
-                print(f"  try {attempt}: CRASHED — {record['crashed']}")
+                print(f"  try {attempt}{shown}: CRASHED — {record['crashed']}")
             else:
                 session = record["session"] or {}
                 if session.get("error"):
-                    print(f"  try {attempt}: stopped early — {str(session['error'])[:60]}")
+                    print(f"  try {attempt}{shown}: stopped early — {str(session['error'])[:60]}")
                 else:
                     card = (session.get("fit_card") or "")
-                    print(f"  try {attempt}: completed — fit card {len(card)} chars")
+                    print(f"  try {attempt}{shown}: completed — fit card {len(card)} chars")
 
         rows.append({"scenario": scenario, "tries": tries})
         print()
@@ -172,8 +177,12 @@ def write_report(rows, args):
 
     for row in rows:
         scenario = row["scenario"]
+        query_line = (
+            "- Queries: one per try, `" + "`, `".join(scenario["queries"]) + "`"
+            if scenario.get("queries") else f"- Query: `{scenario['query']}`"
+        )
         lines += [f"### {scenario['name']}", "",
-                  f"- Query: `{scenario['query']}`",
+                  query_line,
                   f"- Wardrobe: {scenario['wardrobe']}", ""]
 
         for i, record in enumerate(row["tries"], 1):
@@ -186,6 +195,8 @@ def write_report(rows, args):
 
             session = record["session"] or {}
             item = session.get("selected_item") or {}
+            if scenario.get("queries"):
+                lines += [f"- query: `{record['query']}`"]
             lines += [
                 f"- stopped early: {'yes — ' + str(session.get('error')) if session.get('error') else 'no'}",
                 f"- selected_item: {item.get('title', '(none)')}"
@@ -203,9 +214,20 @@ def write_report(rows, args):
 
     path.write_text("\n".join(lines), encoding="utf-8")
 
+    # The same tries as data, so score_run.py can check sessions directly
+    # instead of re-reading the markdown above.
+    raw = {
+        "label": args.label, "when": stamp, "tries": n,
+        "model": config.MODEL, "temperature": config.TEMPERATURE,
+        "rows": [{"scenario": row["scenario"], "tries": row["tries"]} for row in rows],
+    }
+    path.with_suffix(".json").write_text(
+        json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
     import generate
 
-    print(f"Wrote {path.relative_to(config.ROOT)}")
+    print(f"Wrote {path.relative_to(config.ROOT)} and {path.with_suffix('.json').name}")
     print(generate.usage())
     print("\nCommit this file. It's the evidence the test actually happened.")
 
