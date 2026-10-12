@@ -65,6 +65,20 @@ capitalization and trailing price zeros do not matter.
 facts. I chose four of five because the model can vary length and wording;
 requiring every check on the same card still makes this a meaningful target.
 
+> **Revised in unit 4 (before any scored run):** "One clear mention of the
+> selected item" means the caption names the item exactly once. A naming is a
+> noun phrase built on the item's own noun — for lst_002, "tee", "t-shirt" or
+> "top", but not the wardrobe's "tank top". Generic references such as "this
+> piece", "it" or "this find" are not namings. The target stays 4 of 5 and
+> every other check is unchanged. `score_run.py::caption_checks` applies it.
+>
+> **Why revised:** "clear" wasn't checkable, and "one" could mean "at least
+> one" or "exactly one". A card that says "the Y2K Baby Tee" and later "this
+> butterfly print top" passes one reading and fails the other, so two people
+> could score the same run differently. The revision takes the stricter
+> reading because the `create_fit_card` prompt in `tools.py` already asks for
+> exactly that: "Mention the selected item once."
+
 ## 5. Search respects the size and price together
 
 All returned listings must satisfy the requested size and inclusive maximum
