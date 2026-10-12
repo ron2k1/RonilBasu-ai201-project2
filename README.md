@@ -222,8 +222,8 @@ part independently. Three specific pieces:
 4. **Checking the write-up.** A separate review agent checked every number
    and quote in these sections against the committed result files and git
    history. The counts held up. It found that an earlier draft said captions
-   were read "by hand" in my voice. They were read by Claude Code, not me, so
-   that wording is fixed. It also found one quote that wasn't verbatim, two
+   were read "by hand" in my voice. At that point Claude Code had read them,
+   not me, so the wording was fixed. I have since read all 30 myself. It also found one quote that wasn't verbatim, two
    claims stated more broadly than the data, and the overconfident error
    message in What's Still Broken item 6. All are corrected or listed.
 
@@ -247,8 +247,9 @@ part independently. Three specific pieces:
 
 Unit 4 was carried out by Claude Code at my request (see How I Used AI).
 Where these sections say captions were read, Claude Code read each full
-caption, not just the scorer's verdict. The judgment calls noted below are
-its calls. I haven't re-read all 30 captions myself.
+caption, not just the scorer's verdict. I then read all 30 matching-query
+captions myself, 15 before and 15 after. The judgment calls noted below are
+Claude Code's calls.
 
 `python run_eval.py --label before`, 2026-10-11 22:46, gemini-3.5-flash-lite
 at temperature 0.9, cache off, 50 real model calls. Each criterion has its own
