@@ -29,13 +29,17 @@ import config
 
 _lines: list[str] = []
 _step_number = 0
+# Off until start_trace(), so a plain `app.py ask` prints only the answer and
+# `--trace` (or run_eval.py, which starts a trace per try) turns it on.
+_active = False
 
 
 def start_trace() -> None:
     """Clear the trace. Call this at the start of each run."""
-    global _step_number
+    global _step_number, _active
     _lines.clear()
     _step_number = 0
+    _active = True
 
 
 def step(name: str, inputs=None, returned=None, note: str = "") -> None:
@@ -50,6 +54,8 @@ def step(name: str, inputs=None, returned=None, note: str = "") -> None:
         note:     an optional word on why, e.g. "branch: empty, stopping".
     """
     global _step_number
+    if not _active:
+        return
     _step_number += 1
 
     line = f"[{_step_number}] {name}"

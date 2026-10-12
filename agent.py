@@ -67,6 +67,18 @@ def new_session(query: str, wardrobe: dict) -> dict:
     }
 
 
+_STEP_NAMES = {
+    "search": "search_listings (via MCP)",
+    "outfit": "suggest_outfit",
+    "card": "create_fit_card",
+}
+
+
+def _trace_stop(next_step: str, shown, exc: Exception) -> None:
+    trace.step(_STEP_NAMES[next_step], inputs=shown,
+               note=f"raised {type(exc).__name__}, stopping; earlier results kept")
+
+
 def run_agent(query: str, wardrobe: dict) -> dict:
     """Choose each next tool from the last result, saving every result in state."""
     session = new_session(query, wardrobe)
@@ -74,7 +86,11 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         session["parsed"] = parse_query(session["query"])
     except ValueError as exc:
         session["error"] = str(exc)  # Parser messages are local, never provider bodies.
+        trace.step("parse_query (local, no model)", inputs=query,
+                   note="malformed size or budget, stopping before any tool")
         return session
+    trace.step("parse_query (local, no model)", inputs=query,
+               returned=json.dumps(session["parsed"]))
 
     next_step = "search"
     iterations = 0
@@ -84,11 +100,14 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             trace.check_iterations(iterations)
         except RuntimeError:
             session["error"] = "Stopped at the loop limit. Check MAX_ITERATIONS in config.py."
+            trace.step("check_iterations", inputs=iterations, note="loop limit, stopping")
             return session
 
+        shown = None
         try:
             if next_step == "search":
                 inputs = dict(session["parsed"])
+                shown = json.dumps(inputs)
                 session["tool_calls"].append({
                     "tool": "search_listings", "inputs": deepcopy(inputs),
                 })
@@ -102,8 +121,13 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                         "No listings matched those keywords, size, and budget. "
                         "Try broader keywords, another size, or a higher budget."
                     )
+                    trace.step(_STEP_NAMES["search"], inputs=shown, returned=results,
+                               note="branch: empty, stopping before suggest_outfit")
                     return session
                 session["selected_item"] = deepcopy(session["search_results"][0])
+                trace.step(_STEP_NAMES["search"], inputs=shown, returned=results,
+                           note=f"branch: not empty, passing {session['selected_item']['id']} "
+                                "to suggest_outfit")
                 next_step = "outfit"
 
             elif next_step == "outfit":
@@ -111,13 +135,19 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     "new_item": session["selected_item"],
                     "wardrobe": session["wardrobe"],
                 }
+                shown = (f"new_item={inputs['new_item']['id']} ({inputs['new_item']['title']}), "
+                         f"wardrobe={len(inputs['wardrobe'].get('items', []))} items")
                 session["tool_calls"].append({
                     "tool": "suggest_outfit", "inputs": deepcopy(inputs),
                 })
                 session["outfit_suggestion"] = suggest_outfit(**inputs)
                 if not session["outfit_suggestion"] or not session["outfit_suggestion"].strip():
                     session["error"] = "The model returned no outfit. Try the same search again."
+                    trace.step(_STEP_NAMES["outfit"], inputs=shown, returned="(blank)",
+                               note="no outfit, stopping before create_fit_card")
                     return session
+                trace.step(_STEP_NAMES["outfit"], inputs=shown,
+                           returned=session["outfit_suggestion"], note="next: create_fit_card")
                 next_step = "card"
 
             elif next_step == "card":
@@ -125,6 +155,8 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     "outfit": session["outfit_suggestion"],
                     "new_item": session["selected_item"],
                 }
+                shown = (f"outfit=({len(inputs['outfit'])} chars from suggest_outfit), "
+                         f"new_item={inputs['new_item']['id']}")
                 session["tool_calls"].append({
                     "tool": "create_fit_card", "inputs": deepcopy(inputs),
                 })
@@ -132,27 +164,33 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 if not session["fit_card"] or not session["fit_card"].strip():
                     session["fit_card"] = None
                     session["error"] = "The model returned no caption. Try the same search again."
+                trace.step(_STEP_NAMES["card"], inputs=shown,
+                           returned=session["fit_card"] or "(blank)",
+                           note="done" if session["fit_card"] else "no caption, stopping")
                 return session
 
-        except QuotaGuard:
+        except QuotaGuard as exc:
+            _trace_stop(next_step, shown, exc)
             session["error"] = (
                 "This session reached its model request budget. Stop the program, "
                 "check the loop and SESSION_REQUEST_BUDGET in config.py, then "
                 "restart when you are ready for a new session."
             )
             return session
-        except MCPError:
+        except MCPError as exc:
             # MCPError subclasses RuntimeError, so it must be caught first or
             # a broken search server would be reported as a model problem.
+            _trace_stop(next_step, shown, exc)
             session["error"] = (
                 "Could not reach the search tool, which runs as an MCP server "
                 "(mcp_server.py). Run `python mcp_client.py` to check that the "
                 "server starts and lists search_listings, then try again."
             )
             return session
-        except (ModelUnavailable, RuntimeError):
+        except (ModelUnavailable, RuntimeError) as exc:
             # The adapter can include provider diagnostics in exceptions. Never
             # send those bodies (which may contain request details) to the CLI.
+            _trace_stop(next_step, shown, exc)
             session["error"] = (
                 f"Could not finish the {next_step} step because the model is unavailable "
                 "or its request limit was reached. Wait a moment and try again; "
