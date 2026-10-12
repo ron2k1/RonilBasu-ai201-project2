@@ -100,7 +100,9 @@ def check_3(record):
 
 # A naming of the selected item is a noun phrase on the item's own noun
 # (criteria.md, criterion 4 revision). Only lst_002 is selected by this query.
-ITEM_NOUN = {"lst_002": r"(?<!tank )(?<!on )\b(?:tee|t-?shirt|top)\b(?! of\b)"}
+# "on top" / "over top" are adverbs ("a jacket layered over top"), not names;
+# the "over" guard was added after the hand read of the before run caught it.
+ITEM_NOUN = {"lst_002": r"(?<!tank )(?<!on )(?<!over )\b(?:tee|t-?shirt|top)\b(?! of\b)"}
 # Pieces that can appear in an outfit drawn from the example wardrobe.
 WARDROBE_NOUNS = ["jeans", "trousers", "khakis", "tank", "sweatshirt", "crewneck",
                   "hoodie", "jacket", "sneakers", "boots", "belt", "bag"]
@@ -278,7 +280,7 @@ def main():
     raw = json.loads(path.read_text(encoding="utf-8"))
     text = report(raw, path.as_posix())
     out = path.with_name(path.stem.replace("run_", "score_", 1) + ".md")
-    out.write_text(text + "\n", encoding="utf-8")
+    out.write_text(text + "\n", encoding="utf-8", newline="\n")
     print(text)
     print(f"\nWrote {out.relative_to(config.ROOT) if out.is_absolute() else out}")
 
